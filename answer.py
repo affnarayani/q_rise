@@ -21,7 +21,7 @@ from playwright_stealth import Stealth
 # =========================
 # CONFIG
 # =========================
-HEADLESS = False
+HEADLESS = True
 
 QUORA_COOKIES_FILE = "quora_cookies.json.encrypted"
 STATUS_JSON_FILE = "status.json"

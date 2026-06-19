@@ -43,11 +43,6 @@ jobs:
         run: |
           git pull origin ${GITHUB_REF_NAME:-main} --rebase
 
-      - name: Install Linux GUI & Xvfb Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgbm-dev libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libpango-1.0-0 libcairo2 libasound2t64
-
       # 5. Install required packages from requirements.txt or raw fallbacks
       - name: Install Dependencies
         run: |
@@ -64,7 +59,7 @@ jobs:
         env:
           DECRYPT_KEY: ${{ secrets.DECRYPT_KEY }}
         run: |
-          xvfb-run --server-args="-screen 0 1920x1080x24" python answer.py
+          python answer.py
 
       # 8. Archive Error Screenshot if script crashes
       - name: Upload Error Screenshot
