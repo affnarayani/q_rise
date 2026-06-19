@@ -1,0 +1,80 @@
+name: 1B. Generate Answer
+
+on: 
+  workflow_dispatch: 
+  workflow_run:
+    workflows: ["1A. Search Post to Answer"]
+    types:
+      - completed
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest
+    # FIXED: Ab yeh tabhi chalega jab ya toh manual run ho, YA pehla workflow STRICTLY 'success' ke saath complete hua ho
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0 
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+
+    - name: Configure Git
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Pull Latest Changes (Maintain Persistence)
+      run: |
+        git pull origin ${GITHUB_REF_NAME} --rebase
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install playwright playwright-stealth cryptography python-dotenv
+        playwright install chromium --with-deps
+
+    - name: Run Script
+      env:
+        DECRYPT_KEY: ${{ secrets.DECRYPT_KEY }} 
+      run: |
+        python generate_answer.py
+
+    # =======================================================
+    # EXCELLENT: Screenshot artifact upload is active
+    # =======================================================
+    - name: Upload Error Screenshot
+      if: failure() 
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-error-screenshot
+        path: error_screenshot.png
+        if-no-files-found: ignore
+        retention-days: 3
+
+    - name: Commit and Push Changes (If updated)
+      if: always() 
+      run: |
+        # Ensure we sync remote status right before staging
+        git pull origin ${GITHUB_REF_NAME} --rebase || true
+        
+        [ -f status.json ] && git add status.json
+        
+        if git diff --staged --quiet; then
+          echo "[INFO] No changes detected in status.json. Skipping push."
+        else
+          echo "[OK] Changes detected. Committing and pushing updates..."
+          git commit -m "Automated: Update answer generation status [skip ci]"
+          git push origin ${GITHUB_REF_NAME}
+        fi

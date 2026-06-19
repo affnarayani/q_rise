@@ -1,0 +1,178 @@
+name: 1C. Answer
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["1B. Generate Answer"]
+    types:
+      - completed
+
+permissions:
+  contents: write # Grants permission to modify and push json state changes back to the repository
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      # 1. Fetch the latest code and state from the repository
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          fetch-depth: 0 
+
+      # 2. Configure Python Environment
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      # 3. Configure Git Identity Early (To avoid rebase identity conflicts)
+      - name: Configure Git Identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      # 4. Pull Latest Changes before setting up infrastructure
+      - name: Pull Latest Changes
+        run: |
+          git pull origin ${GITHUB_REF_NAME:-main} --rebase
+
+      # =======================================================
+      # NEW: OPENVPN IMPLEMENTATION (RANDOMIZED CONFIG LOADER)
+      # =======================================================
+      - name: Install and Connect OpenVPN
+        env:
+          VPN_USER: ${{ secrets.VPN_USERNAME }}
+          VPN_PASS: ${{ secrets.VPN_PASSWORD }}
+        run: |
+          set +e
+          export DEBIAN_FRONTEND=noninteractive
+          
+          # Ubuntu ke triggers block karna taaki apt installation fast ho
+          sudo dpkg-divert --local --rename --add /usr/sbin/policy-rc.d
+          echo "exit 101" | sudo tee /usr/sbin/policy-rc.d
+          sudo chmod +x /usr/sbin/policy-rc.d
+          
+          sudo apt-get remove --purge -y needrestart
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends openvpn
+          
+          sudo rm -f /usr/sbin/policy-rc.d || true
+          
+          # 🎲 RANDOM FILE SELECTION MECHANISM
+          FILES=(ovpn/ovpn_*.txt)
+          
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "[ERROR] No OVPN text files found in 'ovpn/' directory!"
+            exit 1
+          fi
+          
+          RANDOM_INDEX=$(( RANDOM % ${#FILES[@]} ))
+          SELECTED_FILE=${FILES[$RANDOM_INDEX]}
+          echo "[INFO] Randomly selected VPN Config: $SELECTED_FILE"
+          
+          cat "$SELECTED_FILE" > client.ovpn
+          echo -e "$VPN_USER\n$VPN_PASS" > credentials.txt
+          chmod 600 credentials.txt
+          
+          # 💡 CLEANUP CONFIG TO PREVENT HANGS
+          sed -i '/update-resolv-conf/d' client.ovpn
+          sed -i 's/resolv-retry infinite/resolv-retry 2/g' client.ovpn
+          sed -i 's/auth-user-pass.*/auth-user-pass credentials.txt/g' client.ovpn
+          
+          echo "[INFO] Starting OpenVPN in background daemon mode..."
+          sudo openvpn --config client.ovpn --log openvpn.log --daemon
+          
+          set -e
+          
+          echo "[WAIT] Waiting 20 seconds for VPN tunnel..."
+          sleep 20
+          
+          echo "--- OpenVPN Init Logs ---"
+          sudo tail -n 15 openvpn.log || true
+          
+          echo "[INFO] Checking Public IP Status..."
+          if curl -s --max-time 10 https://ifconfig.me; then
+            echo -e "\n[SUCCESS] VPN Connected Successfully!"
+          else
+            echo -e "\n[WARNING] First choice failed or timed out. Trying fallback config..."
+            NEW_INDEX=$(( (RANDOM_INDEX + 1) % ${#FILES[@]} ))
+            SELECTED_FILE=${FILES[$NEW_INDEX]}
+            echo "[INFO] Fallback selected VPN Config: $SELECTED_FILE"
+            
+            sudo killall openvpn || true
+            cat "$SELECTED_FILE" > client.ovpn
+            sed -i '/update-resolv-conf/d' client.ovpn
+            sed -i 's/resolv-retry infinite/resolv-retry 2/g' client.ovpn
+            sed -i 's/auth-user-pass.*/auth-user-pass credentials.txt/g' client.ovpn
+            
+            sudo openvpn --config client.ovpn --log openvpn.log --daemon
+            sleep 20
+            sudo tail -n 15 openvpn.log || true
+            curl -s --max-time 10 https://ifconfig.me || echo "Proceeding with current network route..."
+          fi
+
+      # 5. Install required packages from requirements.txt or raw fallbacks
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install playwright playwright-stealth cryptography python-dotenv; fi
+
+      # 6. Set up Playwright Chromium browser and its system binaries
+      - name: Install Playwright and System Dependencies
+        run: |
+          python -m playwright install --with-deps chromium
+
+      # 7. Run the core automation script (Clean Headless Execution)
+      - name: Run Quora Answer Script
+        env:
+          DECRYPT_KEY: ${{ secrets.DECRYPT_KEY }}
+        run: |
+          python answer.py
+
+      # 8. Archive Error Screenshot if script crashes
+      - name: Upload Error Screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: substack-final-error-screenshot
+          path: error_screenshot.png
+          if-no-files-found: ignore
+          retention-days: 3
+
+      # 9. Commit and Push Any Changes (Safe State Sync with Stash)
+      - name: Commit and Push Any Changes
+        if: always() # Hamesha chalega taaki state save ho sake
+        run: |
+          BRANCH_NAME="${GITHUB_REF_NAME:-main}"
+          
+          # Local changes temporarily hide karo
+          git stash
+          
+          # Remote changes securely pull karo
+          git pull origin "$BRANCH_NAME" --rebase
+          
+          # Local changes wapas apply karo
+          git stash pop || true
+          
+          [ -f status.json ] && git add status.json
+          [ -f answereded.json ] && git add answered.json
+          
+          if git diff --staged --quiet; then
+            echo "No new changes to commit."
+          else
+            git commit -m "chore: update automation history state [skip ci]"
+            git push origin "$BRANCH_NAME"
+          fi
+
+      # 10. Clean up raw credentials from runner before termination
+      - name: Cleanup VPN Credentials
+        if: always()
+        run: |
+          rm -f credentials.txt client.ovpn openvpn.log || true
