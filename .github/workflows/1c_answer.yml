@@ -45,7 +45,7 @@ jobs:
 
       - name: Install and Start Cloudflare WARP Official Client
         run: |
-          # 1. Cloudflare ka official gpg key aur repository add karein (Fixed directory path)
+          # 1. Cloudflare ka official gpg key aur repository add karein
           curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
           
@@ -55,12 +55,14 @@ jobs:
           
           # 3. WARP service ko background mein start karein
           sudo systemctl start warp-svc
-          
-          # 4. Ek chota pause taaki service active ho jaye aur socket ready ho
           sleep 3
           
+          # 4. Global Terms of Service accept karein aur register karein
+          # Naye CLI versions mein tos accept subcommand ya setup flag is tarah pass hota hai:
+          warp-cli registration new --accept-tos || warp-cli tos accept || echo "Trying alternative..."
+          
           # 5. Client registration aur mode setup
-          warp-cli registration new
+          warp-cli registration new --accept-tos || true
           warp-cli mode proxy
           warp-cli connect
           
