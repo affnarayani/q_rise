@@ -57,18 +57,19 @@ jobs:
           sudo systemctl start warp-svc
           sleep 3
           
-          # 4. Global Terms of Service accept karein aur register karein
-          # Naye CLI versions mein tos accept subcommand ya setup flag is tarah pass hota hai:
-          warp-cli registration new --accept-tos || warp-cli tos accept || echo "Trying alternative..."
+          # 4. Environment Variable ke sath Terms of Service accept aur register karein
+          export WARP_ACCEPT_TOS=1
           
-          # 5. Client registration aur mode setup
-          warp-cli registration new --accept-tos || true
-          warp-cli mode proxy
-          warp-cli connect
+          # Naye CLI mein global flag commands se PEHLE lagaya jata hai, is tarah:
+          warp-cli --accept-tos registration new || warp-cli registration new
           
-          # 6. Proxy status double check karne ke liye
+          # 5. Client ko proxy mode par set karke connect karein
+          warp-cli --accept-tos mode proxy || warp-cli mode proxy
+          warp-cli --accept-tos connect || warp-cli connect
+          
+          # 6. Proxy status verification
           sleep 5
-          warp-cli status
+          warp-cli --accept-tos status || warp-cli status
           echo "[OK] Cloudflare WARP is running on local proxy port 40000"
 
       # 5. Install required packages from requirements.txt or raw fallbacks
