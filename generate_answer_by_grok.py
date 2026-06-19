@@ -215,7 +215,7 @@ def run():
         custom_random_wait(15, 30)
 
         # ============================================
-        # PROMPT FOR SUBSTACK NOTES
+        # PROMPT FOR QUORA NOTES
         # ============================================
         STATE_FILE = "quora_cta_state.json"
         TARGET_RATIO = 0.35

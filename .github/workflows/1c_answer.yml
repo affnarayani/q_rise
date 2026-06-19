@@ -39,9 +39,77 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
       # 4. Pull Latest Changes before setting up infrastructure
-      - name: Pull Latest Changes
+      - name: Install and Connect OpenVPN
+        env:
+          VPN_USER: ${{ secrets.VPN_USERNAME }}
+          VPN_PASS: ${{ secrets.VPN_PASSWORD }}
         run: |
-          git pull origin ${GITHUB_REF_NAME:-main} --rebase
+          set +e
+          export DEBIAN_FRONTEND=noninteractive
+          
+          # Ubuntu ke triggers block karna taaki apt installation fast ho
+          sudo dpkg-divert --local --rename --add /usr/sbin/policy-rc.d
+          echo "exit 101" | sudo tee /usr/sbin/policy-rc.d
+          sudo chmod +x /usr/sbin/policy-rc.d
+          
+          sudo apt-get remove --purge -y needrestart
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends openvpn
+          
+          sudo rm -f /usr/sbin/policy-rc.d || true
+          
+          # 🎲 RANDOM FILE SELECTION MECHANISM
+          FILES=(ovpn/ovpn_*.txt)
+          
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "[ERROR] No OVPN text files found in 'ovpn/' directory!"
+            exit 1
+          fi
+          
+          RANDOM_INDEX=$(( RANDOM % ${#FILES[@]} ))
+          SELECTED_FILE=${FILES[$RANDOM_INDEX]}
+          echo "[INFO] Randomly selected VPN Config: $SELECTED_FILE"
+          
+          cat "$SELECTED_FILE" > client.ovpn
+          echo -e "$VPN_USER\n$VPN_PASS" > credentials.txt
+          chmod 600 credentials.txt
+          
+          # 💡 CLEANUP CONFIG TO PREVENT HANGS
+          sed -i '/update-resolv-conf/d' client.ovpn
+          sed -i 's/resolv-retry infinite/resolv-retry 2/g' client.ovpn
+          sed -i 's/auth-user-pass.*/auth-user-pass credentials.txt/g' client.ovpn
+          
+          echo "[INFO] Starting OpenVPN in background daemon mode..."
+          sudo openvpn --config client.ovpn --log openvpn.log --daemon
+          
+          set -e
+          
+          echo "[WAIT] Waiting 20 seconds for VPN tunnel..."
+          sleep 20
+          
+          echo "--- OpenVPN Init Logs ---"
+          sudo tail -n 15 openvpn.log || true
+          
+          echo "[INFO] Checking Public IP Status..."
+          if curl -s --max-time 10 https://ifconfig.me; then
+            echo -e "\n[SUCCESS] VPN Connected Successfully!"
+          else
+            echo -e "\n[WARNING] First choice failed or timed out. Trying fallback config..."
+            NEW_INDEX=$(( (RANDOM_INDEX + 1) % ${#FILES[@]} ))
+            SELECTED_FILE=${FILES[$NEW_INDEX]}
+            echo "[INFO] Fallback selected VPN Config: $SELECTED_FILE"
+            
+            sudo killall openvpn || true
+            cat "$SELECTED_FILE" > client.ovpn
+            sed -i '/update-resolv-conf/d' client.ovpn
+            sed -i 's/resolv-retry infinite/resolv-retry 2/g' client.ovpn
+            sed -i 's/auth-user-pass.*/auth-user-pass credentials.txt/g' client.ovpn
+            
+            sudo openvpn --config client.ovpn --log openvpn.log --daemon
+            sleep 20
+            sudo tail -n 15 openvpn.log || true
+            curl -s --max-time 10 https://ifconfig.me || echo "Proceeding with current network route..."
+          fi
 
 
       # 5. Install required packages from requirements.txt or raw fallbacks
@@ -67,7 +135,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: substack-final-error-screenshot
+          name: quora-final-error-screenshot
           path: error_screenshot.png
           if-no-files-found: ignore
           retention-days: 3
@@ -100,3 +168,8 @@ jobs:
           else
             echo "[INFO] No changes detected in status or answered JSONs. Skipping push."
           fi
+
+      - name: Cleanup VPN Credentials
+        if: always()
+        run: |
+          rm -f credentials.txt client.ovpn openvpn.log || true
