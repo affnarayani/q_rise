@@ -78,21 +78,25 @@ jobs:
         run: |
           BRANCH_NAME="${GITHUB_REF_NAME:-main}"
           
-          # Local changes temporarily hide karo
-          git stash
-          
-          # Remote changes securely pull karo
-          git pull origin "$BRANCH_NAME" --rebase
-          
-          # Local changes wapas apply karo
-          git stash pop || true
-          
-          [ -f status.json ] && git add status.json
-          [ -f answereded.json ] && git add answered.json
-          
-          if git diff --staged --quiet; then
-            echo "No new changes to commit."
-          else
+          # Check agar dono mein se kisi bhi file mein changes hain ya nahi
+          if ( [ -f status.json ] && ! git diff --quiet status.json ) || ( [ -f answered.json ] && ! git diff --quiet answered.json ); then
+            echo "[OK] Changes detected. Stashing modified files to pull latest..."
+            git stash
+            
+            # Remote updates ko safely rebase pull karein
+            git pull origin "$BRANCH_NAME" --rebase
+            
+            # Apne changes ko wapas apply karein (Conflict avoid karne ke liye local state prefer karein)
+            git stash pop || git checkout --theirs status.json answered.json 2>/dev/null || true
+            
+            echo "[OK] Staging and committing updated state files..."
+            [ -f status.json ] && git add status.json
+            [ -f answered.json ] && git add answered.json
+            
             git commit -m "chore: update automation history state [skip ci]"
-            git push origin "$BRANCH_NAME"
+            
+            # Push changes, agar kisi concurrent run ki wajah se reject ho toh rebase karke retry karein
+            git push origin "$BRANCH_NAME" || (git pull origin "$BRANCH_NAME" --rebase && git push origin "$BRANCH_NAME")
+          else
+            echo "[INFO] No changes detected in status or answered JSONs. Skipping push."
           fi

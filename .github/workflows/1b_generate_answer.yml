@@ -66,15 +66,23 @@ jobs:
     - name: Commit and Push Changes (If updated)
       if: always() 
       run: |
-        # Ensure we sync remote status right before staging
-        git pull origin ${GITHUB_REF_NAME} --rebase || true
-        
-        [ -f status.json ] && git add status.json
-        
-        if git diff --staged --quiet; then
-          echo "[INFO] No changes detected in status.json. Skipping push."
-        else
-          echo "[OK] Changes detected. Committing and pushing updates..."
+        # Check if status.json was modified
+        if [ -f status.json ] && ! git diff --quiet status.json; then
+          echo "[OK] Changes detected. Stashing changes to pull latest..."
+          git stash
+          
+          # Force pull remote changes safely
+          git pull origin ${GITHUB_REF_NAME} --rebase
+          
+          # Pop back our modified status.json
+          git stash pop
+          
+          echo "[OK] Staging and committing status.json..."
+          git add status.json
           git commit -m "Automated: Update answer generation status [skip ci]"
-          git push origin ${GITHUB_REF_NAME}
+          
+          # Push changes, if conflicts occur due to concurrent runs, retry once
+          git push origin ${GITHUB_REF_NAME} || (git pull origin ${GITHUB_REF_NAME} --rebase && git push origin ${GITHUB_REF_NAME})
+        else
+          echo "[INFO] No changes detected in status.json. Skipping push."
         fi

@@ -60,20 +60,28 @@ jobs:
         if-no-files-found: ignore
         retention-days: 3
 
-    # =======================================================
-    # UPDATED: COMMIT AND PUSH STATUS & ANSWERED STATE
-    # =======================================================
     - name: Commit and Push Status Changes
       if: always()
       run: |
-        # Dono files ko safety check ke saath stage karega
-        [ -f status.json ] && git add status.json
-        [ -f answered.json ] && git add answered.json
-        
-        if git diff --staged --quiet; then
-          echo "[INFO] No changes detected in status or answered JSONs. Skipping push."
-        else
-          echo "[OK] Changes detected. Committing dynamic state..."
+        # Check agar dono mein se kisi bhi file mein changes hain ya nahi
+        if ( [ -f status.json ] && ! git diff --quiet status.json ) || ( [ -f answered.json ] && ! git diff --quiet answered.json ); then
+          echo "[OK] Changes detected. Stashing modified files to pull latest..."
+          git stash
+          
+          # Remote updates ko safely rebase pull karein jisse execution block na ho
+          git pull origin ${GITHUB_REF_NAME} --rebase
+          
+          # Apne changes ko wapas apply karein
+          git stash pop
+          
+          echo "[OK] Staging and committing updated state files..."
+          [ -f status.json ] && git add status.json
+          [ -f answered.json ] && git add answered.json
+          
           git commit -m "Automated: Fresh target state updated [skip ci]"
-          git push origin ${GITHUB_REF_NAME}
+          
+          # Push changes, agar concurrent run ki wajah se reject ho toh ek baar retry karein
+          git push origin ${GITHUB_REF_NAME} || (git pull origin ${GITHUB_REF_NAME} --rebase && git push origin ${GITHUB_REF_NAME})
+        else
+          echo "[INFO] No changes detected in status or answered JSONs. Skipping push."
         fi
