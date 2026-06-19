@@ -208,7 +208,7 @@ def run(decrypt_key: str):
         page.goto("https://www.quora.com/", wait_until="load")
         
         # 3. Selected topic URL par navigate karna
-        topic_url = f"https://www.quora.com/{selected_topic}"
+        topic_url = f"https://www.quora.com/{selected_topic}/top_questions"
         print(f"[STEP] Navigating to Topic URL: {topic_url}", flush=True)
         page.goto(topic_url, wait_until="load")
         
@@ -227,18 +227,13 @@ def run(decrypt_key: str):
         # 5. Dropdown ke andar "Copy link" par click karna (With Fallback)
         print("[STEP] Attempting to click 'Copy link' option...", flush=True)
         
-        copy_link_btn = page.locator('div').filter(has_text=r'/^Copy link$/').first
         try:
-            if copy_link_btn.is_visible(timeout=5000):
-                copy_link_btn.click()
-                print("[OK] Clicked 'Copy link' using primary regex locator.", flush=True)
-            else:
-                raise Exception("Primary locator not visible")
-        except Exception:
-            print("[FALLBACK] Primary locator failed. Trying get_by_text('Copy link')...", flush=True)
-            fallback_btn = page.get_by_text("Copy link").first
-            fallback_btn.click()
-            print("[OK] Clicked 'Copy link' using fallback locator.", flush=True)
+            copy_link_btn = page.get_by_text("Copy link").first
+            copy_link_btn.click(timeout=5000)
+            print("[OK] Clicked 'Copy link' successfully.", flush=True)
+        except Exception as e:
+            print(f"[CRITICAL] 'Copy link' button nahi mila ya click nahi hua: {e}", flush=True)
+            sys.exit(1)
         
         # Clipboard se URL read karna
         copied_url = page.evaluate("navigator.clipboard.readText()")
@@ -278,6 +273,13 @@ def run(decrypt_key: str):
                 raw_navigated_url = page.url
                 clean_navigated_url = raw_navigated_url.split("?")[0]
                 print(f"[NEW URL] Navigated URL (Cleaned): {clean_navigated_url}", flush=True)
+
+                # ==================================================
+                # URL VALIDATION: ALWAYS START WITH QUORA DOMAIN
+                # ==================================================
+                if not clean_navigated_url.startswith("https://www.quora.com"):
+                    print(f"[CRITICAL] URL '{clean_navigated_url}' Quora domain se shuru nahi ho raha hai! Exiting script with status 1.", flush=True)
+                    sys.exit(1)
                 
                 # ==================================================
                 # EXTRACTION GUARD: DUPLICATE CHECK IN ANSWERED.JSON

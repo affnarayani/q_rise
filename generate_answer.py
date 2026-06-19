@@ -238,6 +238,70 @@ def run():
         # ============================================
         # PROMPT FOR SUBSTACK NOTES (WITH 50-150 CHAR LIMIT)
         # ============================================
+        STATE_FILE = "quora_cta_state.json"
+        TARGET_RATIO = 0.35
+        LOWER_BOUND = 0.20   # agar ratio isse neeche chala jaaye, force-correct karo
+        UPPER_BOUND = 0.50   # agar ratio isse zyada ho jaaye, force-correct karo
+
+        def load_state():
+            if os.path.exists(STATE_FILE):
+                try:
+                    with open(STATE_FILE, "r") as f:
+                        content = f.read().strip()
+                        if not content:
+                            return {"total_answers": 0, "cta_count": 0}
+                        return json.loads(content)
+                except (json.JSONDecodeError, ValueError):
+                    # file corrupted ya invalid JSON — safe default pe wapas chale jao
+                    return {"total_answers": 0, "cta_count": 0}
+            return {"total_answers": 0, "cta_count": 0}
+
+        def save_state(state):
+            with open(STATE_FILE, "w") as f:
+                json.dump(state, f)
+
+        state = load_state()
+        current_ratio = (
+            state["cta_count"] / state["total_answers"] if state["total_answers"] > 0 else TARGET_RATIO
+        )
+
+        if current_ratio < LOWER_BOUND:
+            # bahut neeche chala gaya, definitely is baar CTA daal do
+            include_profile_mention = True
+        elif current_ratio > UPPER_BOUND:
+            # bahut zyada ho gaya, is baar definitely skip karo
+            include_profile_mention = False
+        else:
+            # comfortable range mein ho, normal randomness chalne do
+            include_profile_mention = random.random() < TARGET_RATIO
+
+        profile_promotion_block = (
+            f"PROFILE PROMOTION RULE (MANDATORY FOR THIS ANSWER — STRICT):\n"
+            f"The final answer MUST include exactly one natural, organic mention pointing the reader to check the author's Quora profile for more writing on this topic.\n"
+            f"This is non-negotiable for this particular answer — it must be included.\n\n"
+            f"It must feel like something a real person would casually add, not like a promotional CTA or ad.\n"
+            f"It should feel like an afterthought or a natural extension of the insight just shared — not a separate pitch bolted onto the end.\n\n"
+            f"Do NOT:\n"
+            f"- Mention Gumroad, ebooks, selling, products, links, or money\n"
+            f"- Use salesy phrasing like 'check out my profile for more' in a generic/templated way\n"
+            f"- Make it sound like self-promotion or marketing\n"
+            f"- Place it awkwardly disconnected from the insight\n\n"
+            f"Instead, blend it as a natural continuation, e.g. in the spirit of (do not copy verbatim, vary the phrasing each time):\n"
+            f"- 'I've written more on this exact pattern on my profile, if you want to go deeper.'\n"
+            f"- 'There's a longer breakdown of this on my profile for anyone curious.'\n"
+            f"- 'I go into this in more detail on my profile, in case it's useful.'\n\n"
+            f"Vary the wording every time so it never feels copy-pasted or repetitive across answers.\n"
+            f"This mention should ideally come right after the core insight, woven in naturally, not as a final disconnected sentence unless that placement genuinely feels organic.\n\n"
+        ) if include_profile_mention else ""
+
+        candidate_profile_line = (
+            f"Every candidate must still satisfy the PROFILE PROMOTION RULE above.\n\n"
+        ) if include_profile_mention else ""
+
+        reader_value_profile_line = (
+            f"- Does the profile mention feel naturally blended rather than tacked on?\n"
+        ) if include_profile_mention else ""
+
         prompt = (
             f"IMPORTANT: Your entire response must be wrapped in a single ```json code block. "
             f"Do not print any JSON outside of the code block. "
@@ -334,6 +398,8 @@ def run():
             f"The answer must directly engage with the core idea of the post.\n"
             f"Avoid writing something that could be pasted under hundreds of unrelated posts.\n\n"
 
+            f"{profile_promotion_block}"
+
             f"LENGTH:\n"
             f"Preferred range: 250–500 characters including spaces.\n"
             f"The answer should be as short as possible, but as long as necessary to deliver a complete insight.\n"
@@ -373,13 +439,16 @@ def run():
             f"- One counter-intuitive answer\n"
             f"- One memorable/quotable answer\n\n"
 
+            f"{candidate_profile_line}"
+
             f"READER VALUE TEST:\n"
             f"Before selecting the final answer, ask:\n"
             f"- Does this build on the author's actual experience?\n"
             f"- Does it contain a useful or memorable insight?\n"
             f"- Would a thoughtful reader learn something new?\n"
             f"- Would the author feel understood?\n"
-            f"- Is there at least one sentence worth remembering?\n\n"
+            f"- Is there at least one sentence worth remembering?\n"
+            f"{reader_value_profile_line}\n"
 
             f"MEMORABLE ENDING RULE:\n"
             f"Whenever natural, end with the strongest observation, distinction, or insight.\n"
@@ -480,6 +549,10 @@ def run():
                     json.dump(status_data, f, indent=4, ensure_ascii=False)
                 print("[OK] status.json successfully updated (answer appended & answer_generated=True)", flush=True)
                 
+                state["total_answers"] += 1
+                if include_profile_mention:
+                    state["cta_count"] += 1
+                save_state(state)
             except json.JSONDecodeError as je:
                 print(f"[ERROR] Content JSON parse karne me fail hua: {je}. Exiting script...", flush=True)
                 try:

@@ -66,23 +66,24 @@ jobs:
     - name: Commit and Push Changes (If updated)
       if: always() 
       run: |
-        # Check if status.json was modified
-        if [ -f status.json ] && ! git diff --quiet status.json; then
+        # Check if status.json OR quora_cta_state.json was modified/created
+        if [ -n "$(git status --porcelain status.json quora_cta_state.json 2>/dev/null)" ]; then
           echo "[OK] Changes detected. Stashing changes to pull latest..."
-          git stash
+          git stash --include-untracked
           
           # Force pull remote changes safely
           git pull origin ${GITHUB_REF_NAME} --rebase
           
-          # Pop back our modified status.json
+          # Pop back our modified files
           git stash pop
           
-          echo "[OK] Staging and committing status.json..."
+          echo "[OK] Staging and committing status.json and quora_cta_state.json..."
           git add status.json
-          git commit -m "Automated: Update answer generation status [skip ci]"
+          [ -f quora_cta_state.json ] && git add quora_cta_state.json
+          git commit -m "Automated: Update answer generation status and CTA state [skip ci]"
           
           # Push changes, if conflicts occur due to concurrent runs, retry once
           git push origin ${GITHUB_REF_NAME} || (git pull origin ${GITHUB_REF_NAME} --rebase && git push origin ${GITHUB_REF_NAME})
         else
-          echo "[INFO] No changes detected in status.json. Skipping push."
+          echo "[INFO] No changes detected in status.json or quora_cta_state.json. Skipping push."
         fi
