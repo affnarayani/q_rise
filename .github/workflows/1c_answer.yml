@@ -43,6 +43,28 @@ jobs:
         run: |
           git pull origin ${GITHUB_REF_NAME:-main} --rebase
 
+      - name: Install and Start Cloudflare WARP Official Client
+        run: |
+          # 1. Cloudflare ka official gpg key aur repository add karein
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.p/cloudflare-client.list
+          
+          # 2. WARP client install karein
+          sudo apt-get update
+          sudo apt-get install -y cloudflare-warp
+          
+          # 3. WARP service start karein aur client register karein
+          sudo systemctl start warp-svc
+          warp-cli --accept-tos registration new
+          
+          # 4. WARP ko proxy mode par set karein aur connect karein
+          warp-cli --accept-tos mode proxy
+          warp-cli --accept-tos connect
+          
+          # 5. Ek chota wait taaki connection stable ho jaye
+          sleep 5
+          print("[OK] Cloudflare WARP Local Proxy is up on port 40000")
+
       # 5. Install required packages from requirements.txt or raw fallbacks
       - name: Install Dependencies
         run: |
@@ -58,6 +80,8 @@ jobs:
       - name: Run Quora Answer Script
         env:
           DECRYPT_KEY: ${{ secrets.DECRYPT_KEY }}
+          HTTP_PROXY: http://127.0.0.1:40000
+          HTTPS_PROXY: http://127.0.0.1:40000
         run: |
           python answer.py
 
