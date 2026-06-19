@@ -45,25 +45,29 @@ jobs:
 
       - name: Install and Start Cloudflare WARP Official Client
         run: |
-          # 1. Cloudflare ka official gpg key aur repository add karein
+          # 1. Cloudflare ka official gpg key aur repository add karein (Fixed directory path)
           curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.p/cloudflare-client.list
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
           
           # 2. WARP client install karein
           sudo apt-get update
           sudo apt-get install -y cloudflare-warp
           
-          # 3. WARP service start karein aur client register karein
+          # 3. WARP service ko background mein start karein
           sudo systemctl start warp-svc
-          warp-cli --accept-tos registration new
           
-          # 4. WARP ko proxy mode par set karein aur connect karein
-          warp-cli --accept-tos mode proxy
-          warp-cli --accept-tos connect
+          # 4. Ek chota pause taaki service active ho jaye aur socket ready ho
+          sleep 3
           
-          # 5. Ek chota wait taaki connection stable ho jaye
+          # 5. Client registration aur mode setup
+          warp-cli registration new
+          warp-cli mode proxy
+          warp-cli connect
+          
+          # 6. Proxy status double check karne ke liye
           sleep 5
-          print("[OK] Cloudflare WARP Local Proxy is up on port 40000")
+          warp-cli status
+          echo "[OK] Cloudflare WARP is running on local proxy port 40000"
 
       # 5. Install required packages from requirements.txt or raw fallbacks
       - name: Install Dependencies
