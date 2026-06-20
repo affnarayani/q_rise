@@ -186,7 +186,7 @@ def run():
         # ========================================================
         # CLICK "Answer ·" BUTTON
         # ========================================================
-        print("[STEP] Locating 'Answer ·' button...", flush=True)
+        print("[STEP] Locating 'Answer' button...", flush=True)
         locator_primary = page.get_by_role('button', name='Answer ·')
         locator_secondary = page.get_by_role('button', name='Answer')
         answer_btn = locator_primary.or_(locator_secondary)
