@@ -497,7 +497,10 @@ def run():
                     locator_one = code_block_locator.first.inner_text().strip()
                     locator_two = page.get_by_text(re.compile(r'^\{"answer":.*'))
                     combined_locator = locator_one.or_(locator_two)
-                    current_text = combined_locator
+                    try:
+                        current_text = combined_locator.inner_text().strip()
+                    except Exception as e:
+                        current_text = ""
                     current_length = len(current_text)
                     
                     print(f"[STREAM INFO] Cycle {cycle+1}: Previous Length = {last_length}, Current Length = {current_length}", flush=True)
