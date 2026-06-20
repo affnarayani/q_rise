@@ -6,7 +6,7 @@ import base64
 import random
 from pathlib import Path
 from typing import List, Dict, Any
-
+import re
 from dotenv import load_dotenv
 
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -303,7 +303,7 @@ def run():
         ) if include_profile_mention else ""
 
         prompt = (
-            f"IMPORTANT: Your entire response must be wrapped in a single ```json code block. "
+            f"STRICTLY IMPORTANT: Your entire response must be wrapped in a single ```json code block. "
             f"Do not print any JSON outside of the code block. "
             f"Do not add any text, explanation, markdown, commentary, or notes before or after the code block.\n\n"
 
@@ -494,7 +494,10 @@ def run():
                 for cycle in range(max_check_cycles):
                     time.sleep(15)
                     
-                    current_text = code_block_locator.first.inner_text().strip()
+                    locator_one = code_block_locator.first
+                    locator_two = page.get_by_text(re.compile(r'^\{"answer":.*'))
+                    combined_locator = locator_one.or_(locator_two)
+                    current_text = combined_locator.inner_text().strip()
                     current_length = len(current_text)
                     
                     print(f"[STREAM INFO] Cycle {cycle+1}: Previous Length = {last_length}, Current Length = {current_length}", flush=True)
