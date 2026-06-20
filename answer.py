@@ -187,10 +187,12 @@ def run():
         # CLICK "Answer ·" BUTTON
         # ========================================================
         print("[STEP] Locating 'Answer ·' button...", flush=True)
-        answer_btn = page.get_by_role('button', name='Answer ·')
-        answer_btn.wait_for(state="visible", timeout=15000)
+        locator_primary = page.get_by_role('button', name='Answer ·')
+        locator_secondary = page.get_by_role('button', name='Answer')
+        answer_btn = locator_primary.or_(locator_secondary)
+        answer_btn.wait_for(state="visible", timeout=30000)
         answer_btn.click()
-        print("[OK] 'Answer ·' button clicked.", flush=True)
+        print("[OK] 'Answer' button clicked.", flush=True)
 
         # Wait for 15, 30 seconds for the pop-up to fully load
         custom_random_wait(15, 30)
