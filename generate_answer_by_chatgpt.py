@@ -6,7 +6,7 @@ import base64
 import random
 from pathlib import Path
 from typing import List, Dict, Any
-import re
+
 from dotenv import load_dotenv
 
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -494,13 +494,7 @@ def run():
                 for cycle in range(max_check_cycles):
                     time.sleep(15)
                     
-                    locator_one = code_block_locator.first.inner_text().strip()
-                    locator_two = page.get_by_text(re.compile(r'^\{"answer":.*'))
-                    combined_locator = locator_one.or_(locator_two)
-                    try:
-                        current_text = combined_locator
-                    except Exception as e:
-                        current_text = ""
+                    current_text = code_block_locator.first.or_(page.locator('#code-block-viewer pre')).inner_text().strip()
                     current_length = len(current_text)
                     
                     print(f"[STREAM INFO] Cycle {cycle+1}: Previous Length = {last_length}, Current Length = {current_length}", flush=True)
