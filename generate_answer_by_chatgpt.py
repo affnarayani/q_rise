@@ -498,7 +498,7 @@ def run():
                     locator_two = page.get_by_text(re.compile(r'^\{"answer":.*'))
                     combined_locator = locator_one.or_(locator_two)
                     try:
-                        current_text = combined_locator.inner_text().strip()
+                        current_text = combined_locator
                     except Exception as e:
                         current_text = ""
                     current_length = len(current_text)
