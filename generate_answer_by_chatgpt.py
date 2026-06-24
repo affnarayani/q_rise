@@ -303,7 +303,7 @@ def run():
         ) if include_profile_mention else ""
 
         prompt = (
-            f"STRICTLY IMPORTANT: Your entire response must be wrapped in a single ```json code block. "
+            f"STRICTLY CRITICALLY IMPORTANT: Your entire response must be wrapped in a single ```json code block. "
             f"Do not print any JSON outside of the code block. "
             f"Do not add any text, explanation, markdown, commentary, or notes before or after the code block.\n\n"
 
