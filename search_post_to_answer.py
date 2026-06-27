@@ -217,7 +217,7 @@ def run(decrypt_key: str):
         
         # 4. Dropdown locator ko dhoond kar click karna
         print("[STEP] Locating and clicking the share/more dropdown wrapper...", flush=True)
-        dropdown_trigger = page.locator('.q-relative > .q-box.qu-display--inline-block > .q-relative > .q-click-wrapper').first()
+        dropdown_trigger = page.locator('.q-relative > .q-box.qu-display--inline-block > .q-relative > .q-click-wrapper').first
         dropdown_trigger.click()
         
         # 3 to 6 seconds wait dropdown khulne ke liye
