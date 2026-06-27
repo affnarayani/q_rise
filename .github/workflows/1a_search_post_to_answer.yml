@@ -79,15 +79,12 @@ jobs:
       run: |
         python search_post_to_answer.py
 
-    # =======================================================
-    # NEW: ARCHIVE ERROR SCREENSHOTS IF SCRIPT FAILS
-    # =======================================================
-    - name: Upload Error Screenshots
+    - name: Upload Error Screenshot
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: playwright-screenshots
-        path: "*.png"
+        name: quora-final-error-screenshot
+        path: error_screenshot.png
         if-no-files-found: ignore
         retention-days: 3
 
