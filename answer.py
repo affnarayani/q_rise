@@ -196,42 +196,9 @@ def run():
 
         # ========================================================
         # DIRECT NAVIGATION TO QUORA URL
-        # ========================================================
-        page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            window.chrome = { runtime: {}, loadTimes: Date.now, csi: () => {} };
-        """)
-
-        print(f"[STEP] Navigating directly to QUORA post URL: {target_url}...", flush=True)
-        
+        # ========================================================        
         # 'commit' use karein taaki jaise hi network stream shuru ho, script capture karna shuru kare
         page.goto(target_url, wait_until="commit")
-
-        # Fixed static wait hata kar hum thoda rukaav denge page elements build hone ke liye
-        time.sleep(15) 
-
-        # Content aur Frame detection check
-        page_content = page.content()
-        if "Performing security verification" in page_content or "challenge" in page_content.lower():
-            print("[!_!] Security Challenge Screen detected in HTML stream. Triggering physical coordinate mouse overrides...", flush=True)
-            try:
-                # Custom coordinates grid simulation jahan default turnstile standard templates align hote hain
-                # 1920x1080 screen optimization ke hisab se coordinates set kiye hain
-                grid_clicks = [(450, 480), (500, 500), (960, 540)] # Center and left panel points
-                
-                for x, y in grid_clicks:
-                    print(f"[*] Moving and dispatching hardware click pulse at coordinate: ({x}, {y})", flush=True)
-                    page.mouse.move(x, y)
-                    page.mouse.down()
-                    time.sleep(0.05)
-                    page.mouse.up()
-                    time.sleep(2)
-                
-                # Check response post-clicks
-                time.sleep(5)
-            except Exception as e:
-                print(f"[-] Hardware coordinate matrix override failed: {e}", flush=True)
-
         print(f"[OK] {target_url} opened completely", flush=True)
         custom_random_wait(15, 30)
 
