@@ -62,14 +62,24 @@ jobs:
           python answer.py
 
       # 8. Archive Error Screenshot if script crashes
-      - name: Upload Error Screenshot
+      - name: View Screenshot Directly Link
         if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: quora-final-error-screenshot
-          path: error_screenshot.png
-          if-no-files-found: ignore
-          retention-days: 3
+        run: |
+          if [ -f error_screenshot.png ]; then
+            echo "[OK] Uploading screenshot to Imgur for direct viewing..."
+            # Anonymous Imgur API ka use karke upload
+            RESPONSE=$(curl -s -F "image=@error_screenshot.png" https://api.imgur.com/3/image)
+            
+            # Link extract karein
+            IMAGE_URL=$(echo $RESPONSE | grep -o '"link":"[^"]*' | grep -o '[^"]*$')
+            IMAGE_URL_CLEAN=$(echo "$IMAGE_URL" | sed 's/\\//g')
+            
+            echo "===================================================="
+            echo "👉 DIRECT SCREENSHOT LINK: $IMAGE_URL_CLEAN"
+            echo "===================================================="
+          else
+            echo "[INFO] No error_screenshot.png found."
+          fi
 
       # 9. Commit and Push Any Changes (Safe State Sync with Stash)
       - name: Commit and Push Any Changes
