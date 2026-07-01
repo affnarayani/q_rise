@@ -43,7 +43,7 @@ jobs:
         run: |
           git pull origin ${GITHUB_REF_NAME:-main} --rebase
 
-      - name: Install and Start Cloudflare WARP (Strict Bypass Mode)
+      - name: Install and Start Cloudflare WARP (Strict Proxy Mode)
         run: |
           # 1. Repository aur GPG Key set karein
           curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
@@ -59,17 +59,42 @@ jobs:
           # 4. Register Normal Account
           warp-cli --accept-tos registration new || warp-cli registration new
           
-          # 5. MODE SETTING: Is baar hum ise PROXY mode par set karenge lekin tunnel tweaks ke sath
+          # 5. Mode ko PROXY par set karein (Port 40000)
           warp-cli --accept-tos mode proxy || warp-cli mode proxy
           
-          # 6. EXCLUSIVE FIX: Cloudflare ke standard firewall rule ko bypass karne ke liye generic DNS override
-          # Isse Cloudflare aapki request ko data center threat score se monitor nahi karega
-          warp-cli --accept-tos dns add 1.1.1.1 || true
-          warp-cli --accept-tos dns add 8.8.8.8 || true
+          # 6. CORRECTED DNS FIX: Naye CLI syntax mein custom DNS ke liye fallback set kiya jata hai
+          # Agar ye commands fail bhi hon to script rukiye nahi (|| true)
+          warp-cli --accept-tos dns configure-dns-over-https enable || true
           
-          # 7. Connect 
-          warp-cli --accept-tos connect || warp-cli connect
-          sleep 5
+          echo "[OK] WARP configured in Proxy Mode"
+
+      - name: Secure Proxy Connection Loop
+        run: |
+          echo "Searching for a clean Cloudflare Proxy IP..."
+          
+          # Max 15 baar try karega clean IP rotate karne ka
+          for i in {1..15}; do
+            echo "Attempt $i: Connecting to WARP..."
+            warp-cli --accept-tos connect || warp-cli connect
+            sleep 6
+            
+            # Port 40000 ke through check karenge ki Quora abhi bhi 403 de raha hai ya nahi
+            STATUS_CODE=$(curl -s -x http://127.0.0.1:40000 -o /dev/null -w "%{http_code}" https://www.quora.com/ || true)
+            
+            if [ "$STATUS_CODE" = "200" ]; then
+              echo "[SUCCESS] Found a clean proxy IP! Status code: $STATUS_CODE"
+              break
+            else
+              echo "[BLOCKED] Proxy IP gave Status $STATUS_CODE. Reconnecting for a new routing..."
+              warp-cli --accept-tos disconnect || warp-cli disconnect
+              sleep 2
+            fi
+            
+            if [ $i -eq 15 ]; then
+              echo "[ERROR] Could not bypass Cloudflare 403 after 15 attempts."
+              exit 1
+            fi
+          done
 
       # 5. Install required packages from requirements.txt or raw fallbacks
       - name: Install Dependencies
@@ -88,10 +113,7 @@ jobs:
           DECRYPT_KEY: ${{ secrets.DECRYPT_KEY }}
           HTTP_PROXY: http://127.0.0.1:40000
           HTTPS_PROXY: http://127.0.0.1:40000
-          ELECTRON_RUN_AS_NODE: 1
-          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
-        run: |
-        
+        run: | 
           python answer.py
 
       # 8. Archive Error Screenshot if script crashes
