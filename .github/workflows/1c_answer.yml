@@ -62,7 +62,17 @@ jobs:
         run: | 
           python answer.py
 
-      # 8. Commit and Push Any Changes (Safe State Sync with Stash)
+      # 8. Archive Error Screenshot if script crashes
+      - name: Upload Error Screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quora-final-error-screenshot
+          path: error_screenshot.png
+          if-no-files-found: ignore
+          retention-days: 3
+
+      # 9. Commit and Push Any Changes (Safe State Sync with Stash)
       - name: Commit and Push Any Changes
         if: always()
         run: |
