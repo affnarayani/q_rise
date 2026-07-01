@@ -176,8 +176,25 @@ def run():
         # ========================================================
         # DIRECT NAVIGATION TO QUORA URL
         # ========================================================
+        page.add_init_script("""
+            // Webdriver property completely nuke karna
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            
+            # Chrome tokens inject karna
+            window.chrome = { runtime: {}, loadTimes: Date.now, csi: () => {} };
+            
+            # Permissions standard spoofing
+            const originalQuery = navigator.permissions.query;
+            navigator.permissions.query = (parameters) => (
+                parameters.name === 'notifications' ?
+                Promise.resolve({ state: Notification.permission }) :
+                originalQuery(parameters)
+            );
+        """)
+
         print(f"[STEP] Navigating directly to QUORA post URL: {target_url}...", flush=True)
         page.goto(target_url, wait_until="domcontentloaded")
+
         custom_random_wait(30, 60)
         if "Performing security verification" in page.content() or page.locator("iframe[src*='turnstile']").count() > 0:
             print("[!_!] Turnstile Screen Detected. Attempting safe click...")
