@@ -54,7 +54,8 @@ jobs:
           echo "Waiting for Tor proxy tunnel to establish on port 9050..."
           # Max 30 seconds tak wait karega jab tak port 9050 open nahi ho jata
           for i in {1..30}; do
-            if nc -z 127.0.0.1:9050; then
+            # FIX: Colon (:) ki jagah Space ( ) use kiya hai yahan
+            if nc -z 127.0.0.1 9050; then
               echo "[OK] Tor Proxy Tunnel successfully opened!"
               break
             fi
@@ -63,7 +64,7 @@ jobs:
 
           # Verify connection
           curl --socks5-hostname 127.0.0.1:9050 https://cloudflare.com/cdn-cgi/trace || echo "Verification failed but proceeding..."
-
+          
       # 5. Install required packages from requirements.txt or raw fallbacks
       - name: Install Dependencies
         run: |
