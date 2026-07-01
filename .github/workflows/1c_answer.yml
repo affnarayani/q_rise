@@ -43,16 +43,24 @@ jobs:
         run: |
           git pull origin ${GITHUB_REF_NAME:-main} --rebase
 
-      - name: Configure Network Routing and DNS Bypass
+      - name: Launch Isolated Anti-Detect Browser Container
         run: |
-          # 1. GitHub runner ke default DNS ko public clean networks par point karein
-          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
-          echo "nameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
+          # Ek temporary safe directory banayein chromium data ke liye
+          mkdir -p /tmp/chrome-user-data
           
-          # 2. System network stack ko force karein ki cloudflare tunnels override ho sakein
-          sudo sysctl -w net.ipv4.tcp_fastopen=3
+          # Docker ke zariye ek deep-isolated browser runtime background mein start karein
+          docker run -d -p 9222:9222 --rm --name headless-chrome \
+            -v /tmp/chrome-user-data:/data \
+            justinribeiro/chrome-headless --headless \
+            --disable-gpu --no-sandbox \
+            --remote-debugging-address=0.0.0.0 \
+            --remote-debugging-port=9222 \
+            --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
+            --disable-blink-features=AutomationControlled
           
-          echo "[OK] System network layer optimized for headless scraping."
+          # Browser ko up hone ke liye 3 seconds ka waqt dein
+          sleep 3
+          echo "[OK] Deep-Isolated Browser Container is running on port 9222"
 
       # 5. Install required packages from requirements.txt or raw fallbacks
       - name: Install Dependencies
@@ -73,8 +81,10 @@ jobs:
           ALL_PROXY: ""
           HTTP_PROXY: ""
           HTTPS_PROXY: ""
+          PLAYWRIGHT_CHROME_REUSE_BROWSERS: 1
+          PLAYWRIGHT_CHROMIUM_ARGS: "--connect-over-cdp=http://localhost:9222"
         run: | 
-          xvfb-run --server-args="-screen 0 1280x1024x24" python answer.py
+          python answer.py
 
       # 8. Archive Error Screenshot if script crashes
       - name: Upload Error Screenshot
