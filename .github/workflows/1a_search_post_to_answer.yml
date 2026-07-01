@@ -66,15 +66,18 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install playwright playwright-stealth cryptography python-dotenv
+        pip install playwright playwright-stealth cryptography python-dotenv seleniumbase turnstile_solver
         playwright install chromium --with-deps
 
     - name: Run Search Script
       env:
         DECRYPT_KEY: ${{ secrets.DECRYPT_KEY }}
+        IMGBBB_API_KEY: ${{ secrets.IMGBBB_API_KEY }}
       run: |
         curl -I https://cloudflare.com/cdn-cgi/trace || echo "Proxy not responding"
-        python search_post_to_answer.py
+        sudo apt-get update
+        sudo apt-get install -y xvfb x11-xserver-utils
+        xvfb-run python search_post_to_answer.py
 
     - name: Upload Error Screenshot
       if: failure()

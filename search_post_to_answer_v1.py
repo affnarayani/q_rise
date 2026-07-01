@@ -6,7 +6,7 @@ import base64
 import random
 from pathlib import Path
 from typing import List, Dict, Any
-import requests
+
 from dotenv import load_dotenv
 
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -14,12 +14,8 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.exceptions import InvalidTag
 
-# SeleniumBase and Turnstile Solver Imports
-from seleniumbase import Driver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from turnstile_solver import solve
+from playwright.sync_api import sync_playwright
+from playwright_stealth import Stealth
 
 
 # =========================
@@ -81,36 +77,27 @@ def load_cookies(file_path: Path, decrypt_key: str) -> List[Dict[str, Any]]:
     plaintext = _decrypt_payload(payload, decrypt_key)
     cookies = json.loads(plaintext.decode("utf-8"))
 
-    formatted_cookies = []
+    # Cookie format cleaning
     for c in cookies:
-        selenium_cookie = {
-            "name": c.get("name"),
-            "value": c.get("value"),
-            "domain": c.get("domain"),
-            "path": c.get("path", "/"),
-            "secure": c.get("secure", True)
-        }
-        
-        if "expirationDate" in c:
-            selenium_cookie["expiry"] = int(c["expirationDate"])
-        elif "expiry" in c:
-            selenium_cookie["expiry"] = int(c["expiry"])
+        if "partitionKey" in c and isinstance(c["partitionKey"], dict):
+            if "topLevelSite" in c["partitionKey"]:
+                c["partitionKey"] = str(c["partitionKey"]["topLevelSite"])
+            else:
+                del c["partitionKey"]
 
         if "sameSite" in c:
             val = str(c["sameSite"]).lower()
             if val in ["no_restriction", "none", "unspecified", "null"]:
-                selenium_cookie["sameSite"] = "None"
+                c["sameSite"] = "None"
             elif val == "lax":
-                selenium_cookie["sameSite"] = "Lax"
+                c["sameSite"] = "Lax"
             elif val == "strict":
-                selenium_cookie["sameSite"] = "Strict"
+                c["sameSite"] = "Strict"
             else:
-                selenium_cookie["sameSite"] = "Lax"
-                
-        formatted_cookies.append(selenium_cookie)
+                c["sameSite"] = "Lax"
 
-    print("[OK] Cookies loaded successfully for Selenium", flush=True)
-    return formatted_cookies
+    print("[OK] Cookies loaded successfully", flush=True)
+    return cookies
 
 
 # =========================
@@ -147,6 +134,7 @@ def is_link_already_answered(url: str, answered_file: str) -> bool:
             if not isinstance(answered_list, list):
                 return False
                 
+            # Trailing slashes '/' remove karke normalize karna
             def normalize(link: str) -> str:
                 return str(link).strip().rstrip("/")
                 
@@ -177,129 +165,135 @@ def run(decrypt_key: str):
     with open(status_path, "r", encoding="utf-8") as sf:
         status_data = json.load(sf)
 
+    # Agar post_to_answer_found True hai, toh smoothly exit 0 kar jana hai
     if status_data.get("post_to_answer_found") is True:
         print("[INFO] 'post_to_answer_found' is already True. Exiting script smoothly (exit status 0).", flush=True)
         sys.exit(0)
     
     print("[OK] 'post_to_answer_found' is False. Running script...", flush=True)
 
+    # Topics file se ek random topic select karna
     selected_topic = get_random_topic(TOPICS_FILE)
     print(f"[TOPIC] Selected topic path: {selected_topic}", flush=True)
 
+    # Cookies load aur decrypt karna
     cookies = load_cookies(Path(QUORA_COOKIES_FILE), decrypt_key)
 
-    driver = None
-    try:
-        # Initialize SeleniumBase with Undetected Chrome context
-        driver = Driver(uc=True, headless=HEADLESS, agent=USER_AGENT)
-        driver.maximize_window()
+    stealth = Stealth()
+    pw_cm = stealth.use_sync(sync_playwright())
+    pw = pw_cm.__enter__()
 
-        # Cookie injection ke liye domain setup zaroori hai
-        print("[STEP] Initializing domain context for cookies...", flush=True)
-        driver.get("https://www.quora.com")
-        time.sleep(2)
-        
-        print("[STEP] Adding cookies to browser context...", flush=True)
-        for cookie in cookies:
-            try:
-                driver.add_cookie(cookie)
-            except Exception:
-                pass
-        print("[OK] Cookies added successfully", flush=True)
+    browser = None
+    try:
+        browser = pw.chromium.launch(
+            headless=HEADLESS,
+            args=[
+                "--start-maximized",
+                "--disable-blink-features=AutomationControlled"
+            ]
+        )
+
+        context = browser.new_context(
+            no_viewport=True,
+            user_agent=USER_AGENT
+        )
+
+        context.grant_permissions(["clipboard-read", "clipboard-write"])
+        context.add_cookies(cookies)
+
+        page = context.new_page()
 
         # 2. Quora Home par jana
         print("[STEP] Opening Quora Home...", flush=True)
-        driver.get("https://www.quora.com/")
-        
-        # Turnstile check right after homepage access
-        print("[STEP] Checking for Cloudflare barriers on Home...", flush=True)
-        solve(driver, detect_timeout=5, solve_timeout=30, verify=True)
+        page.goto("https://www.quora.com/", wait_until="load")
         
         # 3. Selected topic URL par navigate karna
         topic_url = f"https://www.quora.com/{selected_topic}/top_questions"
         print(f"[STEP] Navigating to Topic URL: {topic_url}", flush=True)
-        driver.get(topic_url)
+        page.goto(topic_url, wait_until="load")
         
-        # Turnstile check right after topic navigation
-        print("[STEP] Checking for Cloudflare barriers on Topic URL...", flush=True)
-        solve(driver, detect_timeout=5, solve_timeout=30, verify=True)
-        
+        # 15 to 30 seconds random wait
         custom_random_wait(15, 30)
         
         # 4. Dropdown locator ko dhoond kar click karna
         print("[STEP] Locating and clicking the share/more dropdown wrapper...", flush=True)
-        wait = WebDriverWait(driver, 30)
-        
-        dropdown_xpath = "(//div[contains(@class, 'q-relative')]//div[contains(@class, 'q-click-wrapper')])[1]"
-        dropdown_trigger = wait.until(EC.element_to_be_clickable((By.XPATH, dropdown_xpath)))
+        dropdown_trigger = page.locator('.q-relative > .q-box.qu-display--inline-block > .q-relative > .q-click-wrapper').first
         dropdown_trigger.click()
         
+        # 3 to 6 seconds wait dropdown khulne ke liye
         print("[STEP] Waiting for dropdown to render...", flush=True)
         custom_random_wait(3, 6)
         
         # 5. Dropdown ke andar "Copy link" par click karna (With Fallback)
         print("[STEP] Attempting to click 'Copy link' option...", flush=True)
+        
         try:
-            copy_link_xpath = "//*[contains(text(), 'Copy link')]"
-            copy_link_btn = wait.until(EC.element_to_be_clickable((By.XPATH, copy_link_xpath)))
-            copy_link_btn.click()
+            copy_link_btn = page.get_by_text("Copy link").first
+            copy_link_btn.click(timeout=5000)
             print("[OK] Clicked 'Copy link' successfully.", flush=True)
         except Exception as e:
             print(f"[CRITICAL] 'Copy link' button nahi mila ya click nahi hua: {e}", flush=True)
             sys.exit(1)
         
-        # Clipboard se URL read karna via generic JS runtime execution
-        copied_url = driver.execute_script("return navigator.clipboard.readText();")
+        # Clipboard se URL read karna
+        copied_url = page.evaluate("navigator.clipboard.readText()")
         print(f"[COPIED URL] Link from clipboard: {copied_url}", flush=True)
         
         # 6. Copied link par navigate karna
         if copied_url and str(copied_url).startswith("http"):
             print(f"[STEP] Navigating to copied link...", flush=True)
-            driver.get(copied_url)
+            page.goto(copied_url, wait_until="load")
             
-            print("[STEP] Checking for Cloudflare barriers on Copied link...", flush=True)
-            solve(driver, detect_timeout=5, solve_timeout=30, verify=True)
-            
+            # Copied link par jaane ke baad 15 to 30 seconds wait
             print("[STEP] Waiting after navigating to copied link...", flush=True)
             custom_random_wait(15, 30)
             
             # 7. New Locator se Text extract aur Validation check karna
             print("[STEP] Attempting to extract text from the new targeted CSS locator...", flush=True)
-            target_css = ".q-text.puppeteer_test_question_title"
+            target_text_locator = page.locator(".q-text.puppeteer_test_question_title").first
             
-            target_text_locator = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, target_css)))
-            raw_text = target_text_locator.text
-            
-            if target_text_locator.is_displayed():
+            if target_text_locator.is_visible(timeout=5000):
+                raw_text = target_text_locator.inner_text()
+                
+                # Check agar text 30 characters se kam hai toh exit 1 dena hai
                 if len(raw_text) < 30:
                     print(f"[CRITICAL] Extracted text is less than 30 chars ({len(raw_text)} chars). Exiting script with status 1.", flush=True)
                     sys.exit(1)
                 
+                # Text se saare newlines ko space se replace karna aur clean karna
                 cleaned_content = " ".join(raw_text.replace("\n", " ").replace("\r", " ").split())
                 print(f"[OK] Text validation passed and formatted successfully.", flush=True)
                 
+                # Locator par click karke agle page par navigate karna
                 print("[STEP] Clicking on the locator to navigate to the next page...", flush=True)
                 target_text_locator.click()
+                page.wait_for_load_state("load")
                 
-                print("[STEP] Checking for Cloudflare barriers after title click...", flush=True)
-                solve(driver, detect_timeout=5, solve_timeout=30, verify=True)
-                
-                raw_navigated_url = driver.current_url
+                # Navigated page ka naya URL nikalna aur '?' ke baad ka text remove karna
+                raw_navigated_url = page.url
                 clean_navigated_url = raw_navigated_url.split("?")[0]
                 print(f"[NEW URL] Navigated URL (Cleaned): {clean_navigated_url}", flush=True)
 
+                # ==================================================
+                # URL VALIDATION: ALWAYS START WITH QUORA DOMAIN
+                # ==================================================
                 if not clean_navigated_url.startswith("https://www.quora.com"):
                     print(f"[CRITICAL] URL '{clean_navigated_url}' Quora domain se shuru nahi ho raha hai! Exiting script with status 1.", flush=True)
                     sys.exit(1)
                 
+                # ==================================================
+                # EXTRACTION GUARD: DUPLICATE CHECK IN ANSWERED.JSON
+                # ==================================================
                 print(f"[STEP] Checking if {clean_navigated_url} exists in {ANSWERED_JSON_FILE}...", flush=True)
                 if is_link_already_answered(clean_navigated_url, ANSWERED_JSON_FILE):
-                    print(f"[EXIT 1] Link is already present in {ANSWERED_JSON_FILE}. Leaving status.json untouched.", flush=True)
+                    print(f"[EXIT 1] Link is already present in {ANSWERED_JSON_FILE} (considering trailing slash mapping). Leaving status.json untouched.", flush=True)
                     sys.exit(1)
                 
                 print("[OK] Link is brand new, proceeding to update status.json...", flush=True)
 
-                # STATUS JSON UPDATE
+                # ==================================================
+                # STATUS JSON UPDATE (SUCCESS PATH)
+                # ==================================================
                 status_data["post_to_answer_found"] = True
                 status_data["link_to_post_to_answer"] = clean_navigated_url
                 status_data["content_of_post_to_answer"] = cleaned_content
@@ -314,52 +308,38 @@ def run(decrypt_key: str):
         else:
             print("[WARNING] Clipboard mein valid URL nahi mila. Process ignored.", flush=True)
         
+        # Final 15 to 30 seconds wait browser close hone se pehle
         print("[STEP] Initiating final post-execution delay...", flush=True)
         custom_random_wait(15, 30)
+        
         print("[SUCCESS] Process completed successfully. Closing browser.", flush=True)
 
     except SystemExit:
+        # SystemExit triggers transparently to preserve custom exit status 0 or 1
         raise
     except Exception as e:
-        print("\n" + "!"*60, flush=True)
-        print(f"[CRITICAL ERROR] Automation pipeline failed: {e}", flush=True)
-        print("!"*60 + "\n", flush=True)
-        
-        if driver:
+        print("[ERROR] Script execution broke down due to trace:", e, flush=True)
+        if 'page' in locals() and page:
             try:
                 screenshot_path = "error_screenshot.png"
-                driver.save_screenshot(screenshot_path)
+                page.screenshot(path=screenshot_path, full_page=True)
                 print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
-                
-                imgbb_key = os.getenv("IMGBBB_API_KEY")
-                if imgbb_key:
-                    print("[OK] Uploading screenshot to ImgBB...", flush=True)
-                    url = f"https://api.imgbb.com/1/upload?expiration=600&key={imgbb_key}"
-                    
-                    with open(screenshot_path, "rb") as file:
-                        response = requests.post(url, files={"image": file})
-                    
-                    if response.status_code == 200:
-                        res_data = response.json()
-                        direct_url = res_data["data"]["display_url"]
-                        print("\n" + "="*50, flush=True)
-                        print(f"👉 DIRECT SCREENSHOT LINK: {direct_url}", flush=True)
-                        print("="*50 + "\n", flush=True)
-                    else:
-                        print(f"[WARNING] ImgBB Upload Failed Status: {response.status_code}", flush=True)
-                else:
-                    print("[WARNING] IMGBBB_API_KEY environment variable not found.", flush=True)
-
             except Exception as screenshot_err:
-                print(f"[WARNING] Could not capture screenshot or upload: {screenshot_err}", flush=True)
+                print(f"[WARNING] Could not capture screenshot: {screenshot_err}", flush=True)
         sys.exit(1)
 
     finally:
-        if driver:
+        if browser:
             try:
-                driver.quit()
+                browser.close()
             except:
                 pass
+
+        try:
+            pw_cm.__exit__(None, None, None)
+        except:
+            pass
+
         print("[DONE] Script execution environment torn down cleanly.", flush=True)
 
 
