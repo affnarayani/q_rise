@@ -77,6 +77,7 @@ jobs:
         HTTP_PROXY: http://127.0.0.1:40000
         HTTPS_PROXY: http://127.0.0.1:40000
       run: |
+        curl -I https://www.cloudflare.com/cdn-cgi/trace || echo "Proxy not responding"
         python search_post_to_answer.py
 
     - name: Upload Error Screenshot
