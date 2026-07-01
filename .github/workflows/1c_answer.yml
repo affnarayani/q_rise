@@ -43,7 +43,7 @@ jobs:
         run: |
           git pull origin ${GITHUB_REF_NAME:-main} --rebase
 
-      - name: Install and Start Customized Cloudflare WARP
+      - name: Install and Start Cloudflare WARP (TUN Global Mode)
         run: |
           # 1. Repository aur GPG Key set karein
           curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
@@ -54,29 +54,20 @@ jobs:
           
           # 3. Start Service
           sudo systemctl start warp-svc
-          sleep 3
+          sleep 2
           
-          # 4. Register
+          # 4. Register (New CLI Syntax compatible)
           warp-cli --accept-tos registration new || warp-cli registration new
           
-          # ==========================================
-          # SAFE & COMPATIBLE CONFIGURATION
-          # ==========================================
-          
-          # Mode ko standard VPN par lock karein
+          # 5. STRICT FIX: Mode ko PROXY se badal kar TUN (Standard VPN) karein
+          # Yeh pure GitHub runner ka internet traffic WARP se routing kar dega
           warp-cli --accept-tos mode warp || warp-cli mode warp
           
-          # DNS family off karne ka sabse safe tarika
-          warp-cli --accept-tos dns families off || echo "DNS family skip"
-          
-          # Extra experimental subcommands ko hata diya hai taaki TTY error na aaye
-          # ==========================================
-          
-          # 5. Connect
+          # 6. Connect
           warp-cli --accept-tos connect || warp-cli connect
-          sleep 7
+          sleep 5
           
-          # 6. Verify Connection
+          # 7. Verify ki pure system ka IP change hua ya nahi
           curl https://cloudflare.com/cdn-cgi/trace
 
       # 5. Install required packages from requirements.txt or raw fallbacks
@@ -95,10 +86,8 @@ jobs:
         env:
           DECRYPT_KEY: ${{ secrets.DECRYPT_KEY }}
           IMGBBB_API_KEY: ${{ secrets.IMGBBB_API_KEY }}
-          ALL_PROXY: ""
-          HTTP_PROXY: ""
-          HTTPS_PROXY: ""
         run: | 
+          curl -I https://cloudflare.com/cdn-cgi/trace || echo "Proxy not responding"
           python answer.py
 
       # 8. Archive Error Screenshot if script crashes
