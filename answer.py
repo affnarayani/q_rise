@@ -6,7 +6,7 @@ import base64
 import random
 from pathlib import Path
 from typing import List, Dict, Any
-
+import requests
 from dotenv import load_dotenv
 
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -298,14 +298,41 @@ def run():
     except SystemExit:
         raise
     except Exception as e:
-        print("[CRITICAL ERROR] Automation pipeline failed or locator timed out:", e, flush=True)
+        print("\n" + "!"*60, flush=True)
+        print(f"[CRITICAL ERROR] Automation pipeline failed: {e}", flush=True)
+        print("!"*60 + "\n", flush=True)
+        
+        # 2. Screenshot aur ImgBB Upload logic
         if 'page' in locals() and page:
             try:
                 screenshot_path = "error_screenshot.png"
                 page.screenshot(path=screenshot_path, full_page=True)
                 print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
+                
+                imgbb_key = os.getenv("IMGBBB_API_KEY")
+                if imgbb_key:
+                    print("[OK] Uploading screenshot to ImgBB...", flush=True)
+                    url = f"https://api.imgbb.com/1/upload?expiration=600&key={imgbb_key}"
+                    
+                    with open(screenshot_path, "rb") as file:
+                        response = requests.post(url, files={"image": file})
+                    
+                    if response.status_code == 200:
+                        res_data = response.json()
+                        direct_url = res_data["data"]["display_url"]
+                        print("\n" + "="*50, flush=True)
+                        print(f"👉 DIRECT SCREENSHOT LINK: {direct_url}", flush=True)
+                        print("="*50 + "\n", flush=True)
+                    else:
+                        print(f"[WARNING] ImgBB Upload Failed Status: {response.status_code}", flush=True)
+                else:
+                    print("[WARNING] IMGBBB_API_KEY environment variable not found.", flush=True)
+
             except Exception as screenshot_err:
-                print(f"[WARNING] Could not capture screenshot: {screenshot_err}", flush=True)
+                print(f"[WARNING] Could not capture screenshot or upload: {screenshot_err}", flush=True)
+        
+        # 3. CRITICAL FIX: Pure script ko exit code 1 ke sath band karein, 
+        # taaki GitHub Actions ko pata chale ki run FAIL hua hai aur woh aapko workflow error dikhaye.
         sys.exit(1)
 
     finally:

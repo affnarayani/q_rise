@@ -58,30 +58,19 @@ jobs:
       - name: Run Quora Answer Script
         env:
           DECRYPT_KEY: ${{ secrets.DECRYPT_KEY }}
+          IMGBBB_API_KEY: ${{ secrets.IMGBBB_API_KEY }}
         run: | 
           python answer.py
 
       # 8. Archive Error Screenshot if script crashes
-      - name: View Screenshot Directly Link
+      - name: Upload Error Screenshot
         if: failure()
-        run: |
-          if [ -f error_screenshot.png ]; then
-            echo "[OK] Uploading screenshot to free web hosts..."
-            
-            # Option 1: Using 0x0.st (Super fast & direct)
-            URL_0X0=$(curl -s -F "file=@error_screenshot.png" https://0x0.st)
-            
-            # Option 2: Using transfer.sh (Fallback if 0x0 fails)
-            URL_TRANSFER=$(curl -s --upload-file error_screenshot.png https://transfer.sh/error_screenshot.png)
-            
-            echo "===================================================="
-            echo "👉 DIRECT SCREENSHOT LINK (0x0): $URL_0X0"
-            echo "👉 ALTERNATE LINK (Transfer.sh): $URL_TRANSFER"
-            echo "===================================================="
-          else
-            echo "[INFO] No error_screenshot.png found."
-          fi
-        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: quora-final-error-screenshot
+          path: error_screenshot.png
+          if-no-files-found: ignore
+          retention-days: 3
 
       # 9. Commit and Push Any Changes (Safe State Sync with Stash)
       - name: Commit and Push Any Changes
