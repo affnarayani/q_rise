@@ -36,34 +36,77 @@ jobs:
       run: |
         git pull origin ${GITHUB_REF_NAME} --rebase
 
-    - name: Install and Start Cloudflare WARP Official Client
+    - name: Install and Connect OpenVPN (Randomized Config Loader)
+      env:
+        VPN_USER: ${{ secrets.VPN_USERNAME }}
+        VPN_PASS: ${{ secrets.VPN_PASSWORD }}
       run: |
-        # 1. Cloudflare ka official gpg key aur repository add karein
-        curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
-        echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+        set +e
+        export DEBIAN_FRONTEND=noninteractive
         
-        # 2. WARP client install karein
-        sudo apt-get update
-        sudo apt-get install -y cloudflare-warp
+        # Ubuntu ke triggers block karna taaki apt installation fast ho
+        sudo dpkg-divert --local --rename --add /usr/sbin/policy-rc.d
+        echo "exit 101" | sudo tee /usr/sbin/policy-rc.d
+        sudo chmod +x /usr/sbin/policy-rc.d
         
-        # 3. WARP service ko background mein start karein
-        sudo systemctl start warp-svc
-        sleep 3
+        sudo apt-get remove --purge -y needrestart
+        sudo apt-get update -y
+        sudo apt-get install -y --no-install-recommends openvpn
         
-        # 4. Environment Variable ke sath Terms of Service accept aur register karein
-        export WARP_ACCEPT_TOS=1
+        sudo rm -f /usr/sbin/policy-rc.d || true
         
-        # Naye CLI mein global flag commands se PEHLE lagaya jata hai, is tarah:
-        warp-cli --accept-tos registration new || warp-cli registration new
+        # 🎲 RANDOM FILE SELECTION MECHANISM
+        FILES=(ovpn/ovpn_*.txt)
         
-        # 5. Client ko proxy mode par set karke connect karein
-        warp-cli --accept-tos mode proxy || warp-cli mode proxy
-        warp-cli --accept-tos connect || warp-cli connect
+        if [ ${#FILES[@]} -eq 0 ]; then
+          echo "[ERROR] No OVPN text files found in 'ovpn/' directory!"
+          exit 1
+        fi
         
-        # 6. Proxy status verification
-        sleep 5
-        warp-cli --accept-tos status || warp-cli status
-        echo "[OK] Cloudflare WARP is running on local proxy port 40000"
+        RANDOM_INDEX=$(( RANDOM % ${#FILES[@]} ))
+        SELECTED_FILE=${FILES[$RANDOM_INDEX]}
+        echo "[INFO] Randomly selected VPN Config: $SELECTED_FILE"
+        
+        cat "$SELECTED_FILE" > client.ovpn
+        echo -e "$VPN_USER\n$VPN_PASS" > credentials.txt
+        chmod 600 credentials.txt
+        
+        # 💡 CLEANUP CONFIG TO PREVENT HANGS
+        sed -i '/update-resolv-conf/d' client.ovpn
+        sed -i 's/resolv-retry infinite/resolv-retry 2/g' client.ovpn
+        sed -i 's/auth-user-pass.*/auth-user-pass credentials.txt/g' client.ovpn
+        
+        echo "[INFO] Starting OpenVPN in background daemon mode..."
+        sudo openvpn --config client.ovpn --log openvpn.log --daemon
+        
+        set -e
+        
+        echo "[WAIT] Waiting 20 seconds for VPN tunnel..."
+        sleep 20
+        
+        echo "--- OpenVPN Init Logs ---"
+        sudo tail -n 15 openvpn.log || true
+        
+        echo "[INFO] Checking Public IP Status..."
+        if curl -s --max-time 10 https://ifconfig.me; then
+          echo -e "\n[SUCCESS] VPN Connected Successfully!"
+        else
+          echo -e "\n[WARNING] First choice failed or timed out. Trying a different random config as fallback..."
+          NEW_INDEX=$(( (RANDOM_INDEX + 1) % ${#FILES[@]} ))
+          SELECTED_FILE=${FILES[$NEW_INDEX]}
+          echo "[INFO] Fallback selected VPN Config: $SELECTED_FILE"
+          
+          sudo killall openvpn || true
+          cat "$SELECTED_FILE" > client.ovpn
+          sed -i '/update-resolv-conf/d' client.ovpn
+          sed -i 's/resolv-retry infinite/resolv-retry 2/g' client.ovpn
+          sed -i 's/auth-user-pass.*/auth-user-pass credentials.txt/g' client.ovpn
+          
+          sudo openvpn --config client.ovpn --log openvpn.log --daemon
+          sleep 20
+          sudo tail -n 15 openvpn.log || true
+          curl -s --max-time 10 https://ifconfig.me || echo "Proceeding with current network route..."
+        fi
 
     - name: Install Dependencies
       run: |
@@ -74,8 +117,6 @@ jobs:
     - name: Run Search Script
       env:
         DECRYPT_KEY: ${{ secrets.DECRYPT_KEY }}
-        HTTP_PROXY: http://127.0.0.1:40000
-        HTTPS_PROXY: http://127.0.0.1:40000
       run: |
         python search_post_to_answer.py
 
@@ -113,3 +154,8 @@ jobs:
         else
           echo "[INFO] No changes detected in status or answered JSONs. Skipping push."
         fi
+
+    - name: Cleanup Credentials
+      if: always()
+      run: |
+        rm -f credentials.txt client.ovpn openvpn.log || true
