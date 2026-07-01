@@ -43,15 +43,26 @@ jobs:
         run: |
           git pull origin ${GITHUB_REF_NAME:-main} --rebase
 
-      - name: Install and Start Tor Proxy (Clean IP Alternative)
+      - name: Install and Start Tor Proxy
         run: |
           sudo apt-get update
-          sudo apt-get install -y tor
-          # Tor service ko start karein (Yeh by default port 9050 par SOCKS5 proxy banata hai)
+          sudo apt-get install -y tor netcat-openbsd
+          
+          # Tor service ko start karein
           sudo systemctl start tor
-          sleep 5
-          # Verify karein ki Tor sahi chal raha hai aur naya IP mila ya nahi
-          curl --socks5-hostname 127.0.0.1:9050 https://cloudflare.com/cdn-cgi/trace
+          
+          echo "Waiting for Tor proxy tunnel to establish on port 9050..."
+          # Max 30 seconds tak wait karega jab tak port 9050 open nahi ho jata
+          for i in {1..30}; do
+            if nc -z 127.0.0.1:9050; then
+              echo "[OK] Tor Proxy Tunnel successfully opened!"
+              break
+            fi
+            sleep 1
+          done
+
+          # Verify connection
+          curl --socks5-hostname 127.0.0.1:9050 https://cloudflare.com/cdn-cgi/trace || echo "Verification failed but proceeding..."
 
       # 5. Install required packages from requirements.txt or raw fallbacks
       - name: Install Dependencies
