@@ -43,48 +43,6 @@ jobs:
         run: |
           git pull origin ${GITHUB_REF_NAME:-main} --rebase
 
-      - name: Install and Start Cloudflare WARP (TUN Global Mode)
-        run: |
-          # 1. Repository aur GPG Key set karein
-          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
-          
-          # 2. Install
-          sudo apt-get update && sudo apt-get install -y cloudflare-warp
-          
-          # 3. Start Service
-          sudo systemctl start warp-svc
-          sleep 3
-          
-          # 4. Register
-          warp-cli --accept-tos registration new || warp-cli registration new || true
-          sleep 2
-          
-          # 4b. Alternate WARP+ CLI Commands (Har possible command check karega)
-          echo "[INFO] Attempting to apply WARP+ Key..."
-          KEY="e9P3g5G1-s70ZG61c-8wb13KV4"
-          
-          # Try Command 1: Latest Cloudflare syntax
-          warp-cli --accept-tos registration license "$KEY" || \
-          # Try Command 2: Alternate new syntax
-          warp-cli --accept-tos registration set-license "$KEY" || \
-          # Try Command 3: Older syntax
-          warp-cli --accept-tos license register "$KEY" || \
-          echo "[WARNING] Could not apply WARP+ key, continuing with free tier to avoid crash."
-
-          # 5. Mode ko TUN karein
-          warp-cli --accept-tos mode warp || warp-cli mode warp
-          
-          # 6. Connect
-          warp-cli --accept-tos connect || warp-cli connect
-          sleep 5
-          
-          # 7. Final status check (Isme dikhega account type kya hai)
-          warp-cli registration show || warp-cli account || true
-          
-          # 8. Verify Connection
-          curl https://cloudflare.com/cdn-cgi/trace
-
       # 5. Install required packages from requirements.txt or raw fallbacks
       - name: Install Dependencies
         run: |
@@ -101,8 +59,7 @@ jobs:
         env:
           DECRYPT_KEY: ${{ secrets.DECRYPT_KEY }}
         run: | 
-          sudo apt-get install -y xvfb
-          xvfb-run --server-args="-screen 0 1920x1080x24" python answer.py
+          python answer.py
 
       # 8. Archive Error Screenshot if script crashes
       - name: Upload Error Screenshot
