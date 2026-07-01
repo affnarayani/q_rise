@@ -70,6 +70,24 @@ jobs:
           # 7. Verify ki pure system ka IP change hua ya nahi
           curl https://cloudflare.com/cdn-cgi/trace
 
+      - name: Verify WARP Exit IP
+        run: |
+          echo "========== Cloudflare Trace =========="
+          curl -s https://cloudflare.com/cdn-cgi/trace
+
+          echo
+          echo "========== Public IP =========="
+          curl -s https://ifconfig.me
+          echo
+
+          echo
+          echo "========== IP Info =========="
+          curl -s https://ipinfo.io
+
+          echo
+          echo "========== ASN =========="
+          curl -s https://ipinfo.io/org
+
       # 5. Install required packages from requirements.txt or raw fallbacks
       - name: Install Dependencies
         run: |
