@@ -178,6 +178,26 @@ def run():
         # ========================================================
         print(f"[STEP] Navigating directly to QUORA post URL: {target_url}...", flush=True)
         page.goto(target_url, wait_until="domcontentloaded")
+        custom_random_wait(30, 60)
+        if "Performing security verification" in page.content() or page.locator("iframe[src*='turnstile']").count() > 0:
+            print("[!_!] Turnstile Screen Detected. Attempting safe click...")
+            try:
+                page.wait_for_selector("iframe[src*='turnstile']", timeout=15000)
+                frame = page.frame_locator("iframe[src*='turnstile']")
+                
+                # Turnstile box targets
+                checkbox = frame.locator("#challenge-stage, .ctp-checkbox-label, input[type='checkbox']")
+                if checkbox.count() > 0:
+                    checkbox.click()
+                    time.sleep(7)
+                else:
+                    box = page.locator("iframe[src*='turnstile']").bounding_box()
+                    if box:
+                        page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                        time.sleep(7)
+            except Exception as e:
+                print(f"[-] Turnstile click bypass failed: {e}")
+
         print(f"[OK] {target_url} opened completely", flush=True)
         
         # URL par navigate hone ke baad 15, 30 seconds ka random wait
