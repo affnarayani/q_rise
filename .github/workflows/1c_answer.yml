@@ -101,7 +101,8 @@ jobs:
         env:
           DECRYPT_KEY: ${{ secrets.DECRYPT_KEY }}
         run: | 
-          python answer.py
+          sudo apt-get install -y xvfb
+          xvfb-run --server-args="-screen 0 1920x1080x24" python answer.py
 
       # 8. Archive Error Screenshot if script crashes
       - name: Upload Error Screenshot
