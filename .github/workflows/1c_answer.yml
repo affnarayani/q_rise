@@ -43,30 +43,16 @@ jobs:
         run: |
           git pull origin ${GITHUB_REF_NAME:-main} --rebase
 
-      - name: Install and Start Tor Proxy
+      - name: Configure Network Routing and DNS Bypass
         run: |
-          sudo apt-get update
-          sudo apt-get install -y tor netcat-openbsd tsocks
+          # 1. GitHub runner ke default DNS ko public clean networks par point karein
+          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+          echo "nameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
           
-          # tsocks ko Tor ke port 9050 par set karein
-          echo "server = 127.0.0.1" | sudo tee /etc/tsocks.conf
-          echo "server_port = 9050" | sudo tee -a /etc/tsocks.conf
-          echo "server_type = 5" | sudo tee -a /etc/tsocks.conf
+          # 2. System network stack ko force karein ki cloudflare tunnels override ho sakein
+          sudo sysctl -w net.ipv4.tcp_fastopen=3
           
-          # Tor service ko start karein
-          sudo systemctl start tor
-          
-          echo "Waiting for Tor proxy tunnel to establish on port 9050..."
-          for i in {1..30}; do
-            if nc -z 127.0.0.1 9050; then
-              echo "[OK] Tor Proxy Tunnel successfully opened!"
-              break
-            fi
-            sleep 1
-          done
-          
-          # Tor network thoda slow hota hai, circuit fully build hone ke liye extra 5 sec wait karein
-          sleep 5
+          echo "[OK] System network layer optimized for headless scraping."
 
       # 5. Install required packages from requirements.txt or raw fallbacks
       - name: Install Dependencies
@@ -88,7 +74,7 @@ jobs:
           HTTP_PROXY: ""
           HTTPS_PROXY: ""
         run: | 
-          xvfb-run --server-args="-screen 0 1280x1024x24" tsocks python answer.py
+          xvfb-run --server-args="-screen 0 1280x1024x24" python answer.py
 
       # 8. Archive Error Screenshot if script crashes
       - name: Upload Error Screenshot
