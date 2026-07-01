@@ -14,18 +14,14 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.exceptions import InvalidTag
 
-# SeleniumBase and Turnstile Solver Imports
-from seleniumbase import Driver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from turnstile_solver import solve
+from playwright.sync_api import sync_playwright
+from playwright_stealth import Stealth
 
 
 # =========================
 # CONFIG
 # =========================
-HEADLESS = True  # Note: UC Mode works best when False, but turnstile_solver can attempt headless execution
+HEADLESS = True
 
 QUORA_COOKIES_FILE = "quora_cookies.json.encrypted"
 STATUS_JSON_FILE = "status.json"
@@ -33,7 +29,7 @@ ANSWERED_JSON_FILE = "answered.json"
 
 PBKDF2_ITERATIONS = 200_000
 
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/122.0.0.0 Safari/537.36"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
 
 # =========================
@@ -81,37 +77,27 @@ def load_cookies(file_path: Path) -> List[Dict[str, Any]]:
     plaintext = _decrypt_payload(payload, DECRYPT_KEY)
     cookies = json.loads(plaintext.decode("utf-8"))
 
-    formatted_cookies = []
     for c in cookies:
-        # Format cookie parameters to match Selenium requirements
-        selenium_cookie = {
-            "name": c.get("name"),
-            "value": c.get("value"),
-            "domain": c.get("domain"),
-            "path": c.get("path", "/"),
-            "secure": c.get("secure", True)
-        }
-        
-        # Handle expiry mapping safely
-        if "expirationDate" in c:
-            selenium_cookie["expiry"] = int(c["expirationDate"])
-        elif "expiry" in c:
-            selenium_cookie["expiry"] = int(c["expiry"])
+        if "partitionKey" in c and isinstance(c["partitionKey"], dict):
+            if "topLevelSite" in c["partitionKey"]:
+                c["partitionKey"] = str(c["partitionKey"]["topLevelSite"])
+            else:
+                del c["partitionKey"]
 
-        # Handle SameSite configuration
         if "sameSite" in c:
             val = str(c["sameSite"]).lower()
-            if val in ["no_restriction", "none"]:
-                selenium_cookie["sameSite"] = "None"
-            elif val == "lax":
-                selenium_cookie["sameSite"] = "Lax"
-            elif val == "strict":
-                selenium_cookie["sameSite"] = "Strict"
-                
-        formatted_cookies.append(selenium_cookie)
 
-    print("[OK] Cookies loaded and formatted for Selenium", flush=True)
-    return formatted_cookies
+            if val in ["no_restriction", "none", "unspecified", "null"]:
+                c["sameSite"] = "None"
+            elif val == "lax":
+                c["sameSite"] = "Lax"
+            elif val == "strict":
+                c["sameSite"] = "Strict"
+            else:
+                c["sameSite"] = "Lax"
+
+    print("[OK] Cookies loaded", flush=True)
+    return cookies
 
 
 # =========================
@@ -145,6 +131,7 @@ def run():
     answer_to_post = status_data.get("answer")
     target_url = status_data.get("link_to_post_to_answer")
 
+    # Condition: "answer_generated" must be true AND "answer" key must not be empty
     if not (answer_gen is True and answer_to_post and str(answer_to_post).strip() != ""):
         print("[EXIT] Script will not run: 'answer_generated' is not True or 'answer' is empty.", flush=True)
         sys.exit(0)
@@ -153,69 +140,61 @@ def run():
         print("[ERROR] QUORA URL missing in status.json.", flush=True)
         sys.exit(1)
 
+    # Cookies setup
     cookies = load_cookies(Path(QUORA_COOKIES_FILE))
     print(f"[OK] Total cookies loaded: {len(cookies)}", flush=True)
 
     # =========================
-    # SELENIUMBASE DRIVER SETUP
+    # STEALTH SETUP
     # =========================
-    driver = None
-    try:
-        # Initialize SeleniumBase with Undetected Chrome (uc=True)
-        driver = Driver(uc=True, headless=HEADLESS, agent=USER_AGENT)
-        driver.maximize_window()
+    stealth = Stealth()
+    pw_cm = stealth.use_sync(sync_playwright())
+    pw = pw_cm.__enter__()
 
-        # To add cookies in Selenium, you must be on the domain first
-        print("[STEP] Initializing domain context for cookies...", flush=True)
-        driver.get("https://www.quora.com")
-        time.sleep(2)
-        
+    browser = None
+    try:
+        browser = pw.chromium.launch(
+            headless=HEADLESS,
+            args=[
+                "--start-maximized",
+                "--disable-blink-features=AutomationControlled"
+            ]
+        )
+
+        context = browser.new_context(
+            no_viewport=True,
+            user_agent=USER_AGENT
+        )
+
+        context.grant_permissions(["clipboard-read", "clipboard-write"])
         print("[STEP] Adding cookies to browser context...", flush=True)
-        for cookie in cookies:
-            try:
-                driver.add_cookie(cookie)
-            except Exception as ce:
-                # Catch dynamic top-level mismatch errors silently if any
-                pass
+        context.add_cookies(cookies)
+
+        page = context.new_page()
         print("[OK] Cookies added successfully", flush=True)
 
         # ========================================================
         # DIRECT NAVIGATION TO QUORA URL
         # ========================================================
         print(f"[STEP] Navigating directly to QUORA post URL: {target_url}...", flush=True)
-        driver.get(target_url)
+        page.goto(target_url, wait_until="domcontentloaded")
         print(f"[OK] {target_url} opened completely", flush=True)
         
-        # ========================================================
-        # TURNSTILE SOLVER INTEGRATION
-        # ========================================================
-        print("[STEP] Checking for Cloudflare Turnstile barriers...", flush=True)
-        solved = solve(
-            driver,
-            detect_timeout=7,
-            solve_timeout=35,
-            interval=1,
-            verify=True,
-            click_method="cdp",
-            theme="auto"
-        )
-        print(f"[INFO] Turnstile solver completion status: {solved}", flush=True)
-
-        # Post navigation hold
+        # URL par navigate hone ke baad 15, 30 seconds ka random wait
         custom_random_wait(15, 30)
 
         # ========================================================
-        # CLICK "Answer" BUTTON
+        # CLICK "Answer ·" BUTTON
         # ========================================================
         print("[STEP] Locating 'Answer' button...", flush=True)
-        
-        # XPath matching both "Answer ·" and "Answer" text variants
-        answer_xpath = "//button[descendant::*[contains(text(), 'Answer')]] | //div[contains(text(), 'Answer')]"
-        wait = WebDriverWait(driver, 30)
-        answer_btn = wait.until(EC.element_to_be_clickable((By.XPATH, answer_xpath)))
+        locator_primary = page.get_by_role('button', name='Answer ·')
+        locator_secondary = page.get_by_role('button', name='Answer')
+        answer_btn = locator_primary.or_(locator_secondary).first
+        answer_btn.wait_for(state="visible", timeout=30000)
         answer_btn.click()
         print("[OK] 'Answer' button clicked.", flush=True)
 
+        # Wait for 15, 30 seconds for the pop-up to fully load
         custom_random_wait(15, 30)
 
         # ========================================================
@@ -223,18 +202,19 @@ def run():
         # ========================================================
         print("[STEP] Locating text editor field inside pop-up...", flush=True)
         
-        editor_xpath = "//*[contains(@class, 'doc') and (contains(@class, 'dark_mode') or contains(@class, 'empty'))]"
-        editor_field = wait.until(EC.visibility_of_element_to_be_clickable((By.XPATH, editor_xpath)))
+        # Specific selector check, falls back to generic editor if dark_mode class differs
+        editor_field = page.locator(".doc.dark_mode.empty.focus-visible, .doc.empty").first
+        editor_field.wait_for(state="visible", timeout=15000)
         editor_field.click()
         print("[OK] Editor field focused.", flush=True)
 
         print("[STEP] Typing answer via native keyboard emulation...", flush=True)
-        # Type with artificial latency per character
         for char in answer_to_post:
-            driver.actions.send_keys(char).perform()
+            page.keyboard.type(char)
             time.sleep(random.uniform(0.04, 0.09))
         print("[OK] Typing completed.", flush=True)
 
+        # Wait 15, 30 seconds after typing
         custom_random_wait(15, 30)
 
         # ========================================================
@@ -242,19 +222,20 @@ def run():
         # ========================================================
         print("[STEP] Clicking 'Post' button...", flush=True)
         
-        post_xpath = "//button[descendant::*[text()='Post']] | //div[text()='Post']"
+        # Trying Role first, if hidden/fails, trying via text matching XPath
+        post_btn = page.get_by_role('button', name='Post')
         try:
-            post_btn = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, post_xpath)))
+            post_btn.wait_for(state="visible", timeout=5000)
             post_btn.click()
-        except Exception:
-            print("[INFO] Primary locator failed, trying alternative structural search...", flush=True)
-            post_btn_alt = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'Post')]"))
-            )
+        except:
+            print("[INFO] Role button failed, trying alternative text locator...", flush=True)
+            post_btn_alt = page.locator("//div[contains(text(),'Post')]").first
+            post_btn_alt.wait_for(state="visible", timeout=10000)
             post_btn_alt.click()
             
         print("[OK] Answer posted successfully!", flush=True)
 
+        # Post button click karne ke baad ka obligatory 15, 30 sec wait
         custom_random_wait(15, 30)
 
         # ========================================================
@@ -262,10 +243,12 @@ def run():
         # ========================================================
         print("[STEP] Checking if 'Done' button is visible...", flush=True)
         try:
-            done_xpath = "//button[descendant::*[text()='Done']] | //div[text()='Done'] | //*[text()='Done']"
-            done_btn = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, done_xpath)))
+            done_btn = page.get_by_role('button', name='Done')
+            # 5 seconds wait to see if it shows up
+            done_btn.wait_for(state="visible", timeout=5000)
             done_btn.click()
             print("[OK] 'Done' button clicked successfully.", flush=True)
+            # Done click hone ke baad firse 15, 30 sec wait
             custom_random_wait(15, 30)
         except Exception:
             print("[INFO] 'Done' button not found or not visible. Skipping this step.", flush=True)
@@ -286,6 +269,7 @@ def run():
             except Exception:
                 answered_list = []
                 
+        # Insert target URL at the 0th index (top)
         if target_url not in answered_list:
             answered_list.insert(0, target_url)
             
@@ -307,6 +291,7 @@ def run():
             json.dump(status_data, sf, indent=4)
         print("[OK] status.json reset complete.", flush=True)
 
+        # Final hold before closing browser context (15, 30 seconds)
         print("[STEP] Final hold before closing browser context...", flush=True)
         custom_random_wait(15, 30)
 
@@ -317,10 +302,11 @@ def run():
         print(f"[CRITICAL ERROR] Automation pipeline failed: {e}", flush=True)
         print("!"*60 + "\n", flush=True)
         
-        if driver:
+        # 2. Screenshot aur ImgBB Upload logic
+        if 'page' in locals() and page:
             try:
                 screenshot_path = "error_screenshot.png"
-                driver.save_screenshot(screenshot_path)
+                page.screenshot(path=screenshot_path, full_page=True)
                 print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
                 
                 imgbb_key = os.getenv("IMGBBB_API_KEY")
@@ -347,12 +333,16 @@ def run():
         sys.exit(1)
 
     finally:
-        if driver:
+        if browser:
             try:
-                driver.quit()
+                browser.close()
                 print("[OK] Browser closed context safely.", flush=True)
             except:
                 pass
+        try:
+            pw_cm.__exit__(None, None, None)
+        except:
+            pass
 
         print("[DONE] Process terminated cleanly.", flush=True)
 

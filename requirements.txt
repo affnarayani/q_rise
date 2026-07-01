@@ -3,3 +3,5 @@ requests
 python-dotenv
 cryptography
 playwright-stealth
+seleniumbase 
+turnstile_solver
