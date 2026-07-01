@@ -43,44 +43,53 @@ jobs:
         run: |
           git pull origin ${GITHUB_REF_NAME:-main} --rebase
 
-      - name: Install and Start Cloudflare WARP (TUN Mode)
+      - name: Install and Start Cloudflare WARP (TUN Global Mode with Loop)
         run: |
+          # 1. Repository aur GPG Key set karein
           curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          
+          # 2. Install
           sudo apt-get update && sudo apt-get install -y cloudflare-warp
+          
+          # 3. Start Service
           sudo systemctl start warp-svc
           sleep 2
-          warp-cli --accept-tos registration new || warp-cli registration new
-          warp-cli --accept-tos mode warp || warp-cli mode warp
-
-      - name: Fetch Clean Cloudflare IP (Loop Fix)
-        run: |
-          echo "Searching for a clean Cloudflare IP..."
           
-          # Max 15 baar try karega clean IP dhoondhne ka
+          # 4. Register
+          warp-cli --accept-tos registration new || warp-cli registration new
+          
+          # 5. Mode ko TUN (Standard VPN) set karein
+          warp-cli --accept-tos mode warp || warp-cli mode warp
+          
+          # 6. IP Rotation Loop Setup (Max 15 baar try karega)
+          echo "Starting Clean IP Search in TUN Global Mode..."
           for i in {1..15}; do
             echo "Attempt $i: Connecting to WARP..."
             warp-cli --accept-tos connect || warp-cli connect
-            sleep 5
+            sleep 6
             
-            # Check karte hain ki Quora/Cloudflare block toh nahi kar raha
-            # Agar 200 OK aata hai, matlab IP clean hai!
+            # Pure system ke network se direct Quora ko check karega
             STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://www.quora.com/ || true)
             
             if [ "$STATUS_CODE" = "200" ]; then
-              echo "[SUCCESS] Found a clean IP! Cloudflare status code: $STATUS_CODE"
+              echo "[SUCCESS] Found a clean Global IP! Cloudflare status code: $STATUS_CODE"
               break
             else
-              echo "[BLOCKED] IP is flagged (Status: $STATUS_CODE). Rotating IP..."
+              echo "[BLOCKED] This WARP IP is flagged (Status: $STATUS_CODE). Reconnecting to switch IP..."
               warp-cli --accept-tos disconnect || warp-cli disconnect
               sleep 2
             fi
             
             if [ $i -eq 15 ]; then
-              echo "[ERROR] Could not find a clean IP after 15 attempts."
+              echo "[ERROR] System could not fetch a clean Cloudflare IP after 15 attempts."
               exit 1
             fi
           done
+          
+          # 7. Final Verification Trace
+          echo "Final Network Connection Status:"
+          curl -s https://cloudflare.com/cdn-cgi/trace
 
       # 5. Install required packages from requirements.txt or raw fallbacks
       - name: Install Dependencies
