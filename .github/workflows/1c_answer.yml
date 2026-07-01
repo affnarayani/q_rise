@@ -62,6 +62,33 @@ jobs:
           sleep 3
           echo "[OK] Deep-Isolated Browser Container is running on port 9222"
 
+      - name: Install and Start Cloudflare WARP (TUN Global Mode)
+        run: |
+          # 1. Repository aur GPG Key set karein
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          
+          # 2. Install
+          sudo apt-get update && sudo apt-get install -y cloudflare-warp
+          
+          # 3. Start Service
+          sudo systemctl start warp-svc
+          sleep 2
+          
+          # 4. Register (New CLI Syntax compatible)
+          warp-cli --accept-tos registration new || warp-cli registration new
+          
+          # 5. STRICT FIX: Mode ko PROXY se badal kar TUN (Standard VPN) karein
+          # Yeh pure GitHub runner ka internet traffic WARP se routing kar dega
+          warp-cli --accept-tos mode warp || warp-cli mode warp
+          
+          # 6. Connect
+          warp-cli --accept-tos connect || warp-cli connect
+          sleep 5
+          
+          # 7. Verify ki pure system ka IP change hua ya nahi
+          curl https://cloudflare.com/cdn-cgi/trace
+
       # 5. Install required packages from requirements.txt or raw fallbacks
       - name: Install Dependencies
         run: |
