@@ -330,9 +330,6 @@ def run():
 
             except Exception as screenshot_err:
                 print(f"[WARNING] Could not capture screenshot or upload: {screenshot_err}", flush=True)
-        
-        # 3. CRITICAL FIX: Pure script ko exit code 1 ke sath band karein, 
-        # taaki GitHub Actions ko pata chale ki run FAIL hua hai aur woh aapko workflow error dikhaye.
         sys.exit(1)
 
     finally:
