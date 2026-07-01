@@ -16,7 +16,6 @@ from cryptography.exceptions import InvalidTag
 
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
-from playwright_stealth import stealth_sync
 
 
 # =========================
@@ -206,7 +205,7 @@ def run(decrypt_key: str):
         context.add_cookies(cookies)
 
         page = context.new_page()
-        stealth_sync(page)
+
         # 2. Quora Home par jana
         print("[STEP] Opening Quora Home...", flush=True)
         page.goto("https://www.quora.com/", wait_until="load")
