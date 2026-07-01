@@ -19,6 +19,7 @@ from seleniumbase import Driver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 from turnstile_solver import solve
 
 
@@ -230,8 +231,9 @@ def run():
 
         print("[STEP] Typing answer via native keyboard emulation...", flush=True)
         # Type with artificial latency per character
+        actions = ActionChains(driver)
         for char in answer_to_post:
-            driver.actions.send_keys(char).perform()
+            actions.send_keys(char).perform()
             time.sleep(random.uniform(0.04, 0.09))
         print("[OK] Typing completed.", flush=True)
 
