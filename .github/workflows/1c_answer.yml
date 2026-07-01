@@ -66,20 +66,22 @@ jobs:
         if: failure()
         run: |
           if [ -f error_screenshot.png ]; then
-            echo "[OK] Uploading screenshot to Imgur for direct viewing..."
-            # Anonymous Imgur API ka use karke upload
-            RESPONSE=$(curl -s -F "image=@error_screenshot.png" https://api.imgur.com/3/image)
+            echo "[OK] Uploading screenshot to free web hosts..."
             
-            # Link extract karein
-            IMAGE_URL=$(echo $RESPONSE | grep -o '"link":"[^"]*' | grep -o '[^"]*$')
-            IMAGE_URL_CLEAN=$(echo "$IMAGE_URL" | sed 's/\\//g')
+            # Option 1: Using 0x0.st (Super fast & direct)
+            URL_0X0=$(curl -s -F "file=@error_screenshot.png" https://0x0.st)
+            
+            # Option 2: Using transfer.sh (Fallback if 0x0 fails)
+            URL_TRANSFER=$(curl -s --upload-file error_screenshot.png https://transfer.sh/error_screenshot.png)
             
             echo "===================================================="
-            echo "👉 DIRECT SCREENSHOT LINK: $IMAGE_URL_CLEAN"
+            echo "👉 DIRECT SCREENSHOT LINK (0x0): $URL_0X0"
+            echo "👉 ALTERNATE LINK (Transfer.sh): $URL_TRANSFER"
             echo "===================================================="
           else
             echo "[INFO] No error_screenshot.png found."
           fi
+        continue-on-error: true
 
       # 9. Commit and Push Any Changes (Safe State Sync with Stash)
       - name: Commit and Push Any Changes
