@@ -15,7 +15,7 @@ env:
 
 jobs:
   run-automation:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
@@ -43,60 +43,34 @@ jobs:
         run: |
           git pull origin ${GITHUB_REF_NAME:-main} --rebase
 
-      - name: Install and Start Cloudflare WARP (Strict Proxy Mode)
+      - name: Setup WireGuard and Cloudflare Profile
         run: |
-          # 1. Repository aur GPG Key set karein
-          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          # 1. Official wgcf tool download karein (Jo WARP ko backend se inject karta hai)
+          curl -fsSL https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_amd64 -o wgcf
+          chmod +x wgcf
+          sudo mv wgcf /usr/local/bin/
           
-          # 2. Install
-          sudo apt-get update && sudo apt-get install -y cloudflare-warp
+          # 2. Bina kisi manual input ke register karein (Yeh automated genuine profile banayega)
+          wgcf register --accept-tos
           
-          # 3. Start Service
-          sudo systemctl start warp-svc
-          sleep 2
+          # 3. WireGuard configuration file generate karein
+          wgcf generate
           
-          # 4. Register Normal Account
-          warp-cli --accept-tos registration new || warp-cli registration new
+          # 4. Is config file ko system ke WireGuard directory mein move karein
+          sudo apt-get update && sudo apt-get install -y wireguard-tools
+          sudo mkdir -p /etc/wireguard
+          sudo cp wgcf-profile.conf /etc/wireguard/wg_warp.conf
           
-          # 5. Mode ko PROXY par set karein (Port 40000)
-          warp-cli --accept-tos mode proxy || warp-cli mode proxy
+          # 5. FIX DNS LEAK: Config file mein DNS ko system level bypass ke liye lock karein
+          sudo sed -i 's/DNS = .*/DNS = 1.1.1.1, 8.8.8.8/' /etc/wireguard/wg_warp.conf
           
-          # 6. SYSTEM LEVEL DNS FIX (No warp-cli commands used here)
-          # Seedha system ke resolver mein Cloudflare ka secure DNS aur Google DNS force kar dete hain
-          sudo truncate -s 0 /etc/resolv.conf
-          echo "nameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
-          echo "nameserver 8.8.8.8" | sudo tee -a /etc/resolv.conf
+          # 6. Tunnel start karein (Pure runner ka internet ab system-level par WARP network par hai)
+          sudo wg-quick up wg_warp
+          sleep 5
           
-          echo "[OK] WARP configured in Proxy Mode with Hardcoded System DNS"
-
-      - name: Secure Proxy Connection Loop
-        run: |
-          echo "Searching for a clean Cloudflare Proxy IP..."
-          
-          # Max 15 baar try karega clean IP rotate karne ka
-          for i in {1..15}; do
-            echo "Attempt $i: Connecting to WARP..."
-            warp-cli --accept-tos connect || warp-cli connect
-            sleep 6
-            
-            # Check via Port 40000 proxy
-            STATUS_CODE=$(curl -s -x http://127.0.0.1:40000 -o /dev/null -w "%{http_code}" https://www.quora.com/ || true)
-            
-            if [ "$STATUS_CODE" = "200" ]; then
-              echo "[SUCCESS] Found a clean proxy IP! Status code: $STATUS_CODE"
-              break
-            else
-              echo "[BLOCKED] Proxy IP gave Status $STATUS_CODE. Reconnecting for a new routing..."
-              warp-cli --accept-tos disconnect || warp-cli disconnect
-              sleep 2
-            fi
-            
-            if [ $i -eq 15 ]; then
-              echo "[ERROR] Could not bypass Cloudflare 403 after 15 attempts."
-              exit 1
-            fi
-          done
+          # 7. Check connection status (Quora test)
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://www.quora.com/ || true)
+          echo "Quora Status Code via WireGuard: $STATUS_CODE"
 
       # 5. Install required packages from requirements.txt or raw fallbacks
       - name: Install Dependencies
@@ -113,8 +87,6 @@ jobs:
       - name: Run Quora Answer Script
         env:
           DECRYPT_KEY: ${{ secrets.DECRYPT_KEY }}
-          HTTP_PROXY: http://127.0.0.1:40000
-          HTTPS_PROXY: http://127.0.0.1:40000
         run: | 
           python answer.py
 
