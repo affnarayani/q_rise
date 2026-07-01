@@ -224,7 +224,7 @@ def run():
         print("[STEP] Locating text editor field inside pop-up...", flush=True)
         
         editor_xpath = "//*[contains(@class, 'doc') and (contains(@class, 'dark_mode') or contains(@class, 'empty'))]"
-        editor_field = wait.until(EC.visibility_of_element_to_be_clickable((By.XPATH, editor_xpath)))
+        editor_field = wait.until(EC.element_to_be_clickable((By.XPATH, editor_xpath)))
         editor_field.click()
         print("[OK] Editor field focused.", flush=True)
 
