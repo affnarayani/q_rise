@@ -43,26 +43,7 @@ jobs:
         run: |
           git pull origin ${GITHUB_REF_NAME:-main} --rebase
 
-      - name: Launch Isolated Anti-Detect Browser Container
-        run: |
-          # Ek temporary safe directory banayein chromium data ke liye
-          mkdir -p /tmp/chrome-user-data
-          
-          # Docker ke zariye ek deep-isolated browser runtime background mein start karein
-          docker run -d -p 9222:9222 --rm --name headless-chrome \
-            -v /tmp/chrome-user-data:/data \
-            justinribeiro/chrome-headless --headless \
-            --disable-gpu --no-sandbox \
-            --remote-debugging-address=0.0.0.0 \
-            --remote-debugging-port=9222 \
-            --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
-            --disable-blink-features=AutomationControlled
-          
-          # Browser ko up hone ke liye 3 seconds ka waqt dein
-          sleep 3
-          echo "[OK] Deep-Isolated Browser Container is running on port 9222"
-
-      - name: Install and Start Cloudflare WARP (TUN Global Mode)
+      - name: Install and Start Customized Cloudflare WARP
         run: |
           # 1. Repository aur GPG Key set karein
           curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
@@ -73,20 +54,34 @@ jobs:
           
           # 3. Start Service
           sudo systemctl start warp-svc
-          sleep 2
+          sleep 3
           
-          # 4. Register (New CLI Syntax compatible)
+          # 4. Register
           warp-cli --accept-tos registration new || warp-cli registration new
           
-          # 5. STRICT FIX: Mode ko PROXY se badal kar TUN (Standard VPN) karein
-          # Yeh pure GitHub runner ka internet traffic WARP se routing kar dega
+          # ==========================================
+          # WARP CUSTOMIZATION SETTINGS (CRITICAL)
+          # ==========================================
+          
+          # Customization A: WARP ko standard TUN mode mein hi rakhein taaki pure system ka network override ho
           warp-cli --accept-tos mode warp || warp-cli mode warp
           
-          # 6. Connect
-          warp-cli --accept-tos connect || warp-cli connect
-          sleep 5
+          # Customization B: Cloudflare ke default DNS family filter ko disable karein (Malware/Adult filter se fingerprint badal jati hai)
+          warp-cli --accept-tos dns families none || echo "DNS family skip"
           
-          # 7. Verify ki pure system ka IP change hua ya nahi
+          # Customization C: Protocol ko badal kar 'masque' ya 'wireguard' par force karein (GitHub runner par WireGuard signal clear jata hai)
+          warp-cli --accept-tos tunnel protocol wireguard || echo "Protocol change skip"
+          
+          # Customization D: Local fallback domains ko delete karein taaki GitHub ka internal routing leak na ho
+          warp-cli --accept-tos fallback list clear || echo "Fallback clear skip"
+          
+          # ==========================================
+          
+          # 5. Connect
+          warp-cli --accept-tos connect || warp-cli connect
+          sleep 7
+          
+          # 6. Verify ki pure system ka IP aur colo change hua ya nahi
           curl https://cloudflare.com/cdn-cgi/trace
 
       # 5. Install required packages from requirements.txt or raw fallbacks
@@ -108,8 +103,6 @@ jobs:
           ALL_PROXY: ""
           HTTP_PROXY: ""
           HTTPS_PROXY: ""
-          PLAYWRIGHT_CHROME_REUSE_BROWSERS: 1
-          PLAYWRIGHT_CHROMIUM_ARGS: "--connect-over-cdp=http://localhost:9222"
         run: | 
           python answer.py
 
