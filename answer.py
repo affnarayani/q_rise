@@ -159,13 +159,32 @@ def run():
             args=[
                 "--start-maximized",
                 "--disable-blink-features=AutomationControlled",
-                "--no-sandbox"
+                "--no-sandbox",
+                "--disable-background-networking",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-breakpad",
+                "--disable-client-side-phishing-detection",
+                "--disable-default-apps",
+                "--disable-dev-shm-usage"
             ]
         )
 
         context = browser.new_context(
             no_viewport=True,
-            user_agent=USER_AGENT
+            user_agent=USER_AGENT,
+            extra_http_headers={
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "accept-language": "en-US,en;q=0.9",
+                "sec-ch-ua": '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+                "sec-fetch-dest": "document",
+                "sec-fetch-mode": "navigate",
+                "sec-fetch-site": "none",
+                "sec-fetch-user": "?1",
+                "upgrade-insecure-requests": "1"
+            }
         )
 
         context.grant_permissions(["clipboard-read", "clipboard-write"])
@@ -179,19 +198,8 @@ def run():
         # DIRECT NAVIGATION TO QUORA URL
         # ========================================================
         page.add_init_script("""
-            // Webdriver property completely nuke karna
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            
-            // Chrome tokens inject karna (FIXED COMMENT SYNTAX)
             window.chrome = { runtime: {}, loadTimes: Date.now, csi: () => {} };
-            
-            // Permissions standard spoofing (FIXED COMMENT SYNTAX)
-            const originalQuery = navigator.permissions.query;
-            navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ?
-                Promise.resolve({ state: Notification.permission }) :
-                originalQuery(parameters)
-            );
         """)
 
         print(f"[STEP] Navigating directly to QUORA post URL: {target_url}...", flush=True)
@@ -200,35 +208,29 @@ def run():
         page.goto(target_url, wait_until="commit")
 
         # Fixed static wait hata kar hum thoda rukaav denge page elements build hone ke liye
-        time.sleep(5) 
+        time.sleep(15) 
 
         # Content aur Frame detection check
         page_content = page.content()
-        if "Performing security verification" in page_content or page.locator("iframe[src*='turnstile']").count() > 0:
-            print("[!_!] Turnstile Screen Detected. Attempting safe click...", flush=True)
+        if "Performing security verification" in page_content or "challenge" in page_content.lower():
+            print("[!_!] Security Challenge Screen detected in HTML stream. Triggering physical coordinate mouse overrides...", flush=True)
             try:
-                # 15 seconds ka explicit wait for selector
-                page.wait_for_selector("iframe[src*='turnstile']", state="attached", timeout=15000)
-                frame = page.frame_locator("iframe[src*='turnstile']")
+                # Custom coordinates grid simulation jahan default turnstile standard templates align hote hain
+                # 1920x1080 screen optimization ke hisab se coordinates set kiye hain
+                grid_clicks = [(450, 480), (500, 500), (960, 540)] # Center and left panel points
                 
-                # Checkbox target classes updated
-                checkbox = frame.locator("#challenge-stage, .ctp-checkbox-label, input[type='checkbox']")
+                for x, y in grid_clicks:
+                    print(f"[*] Moving and dispatching hardware click pulse at coordinate: ({x}, {y})", flush=True)
+                    page.mouse.move(x, y)
+                    page.mouse.down()
+                    time.sleep(0.05)
+                    page.mouse.up()
+                    time.sleep(2)
                 
-                if checkbox.count() > 0:
-                    print("[+] Target element visible. Clicking checkbox...", flush=True)
-                    checkbox.click()
-                    time.sleep(7)
-                else:
-                    # Fallback coordinate method agar elements nested hoon
-                    box = page.locator("iframe[src*='turnstile']").bounding_box()
-                    if box:
-                        print(f"[+] Clicking bounding box coordinates: ({box['x']}, {box['y']})", flush=True)
-                        page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                        time.sleep(7)
+                # Check response post-clicks
+                time.sleep(5)
             except Exception as e:
-                print(f"[-] Turnstile click bypass failed: {e}", flush=True)
-                # Debugging image saved to current workspace folder
-                page.screenshot(path="turnstile_error_state.png")
+                print(f"[-] Hardware coordinate matrix override failed: {e}", flush=True)
 
         print(f"[OK] {target_url} opened completely", flush=True)
         custom_random_wait(15, 30)
