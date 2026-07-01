@@ -190,14 +190,11 @@ def run(decrypt_key: str):
             args=[
                 "--start-maximized",
                 "--disable-blink-features=AutomationControlled"
-            ],
-            proxy={
-                "server": "http://127.0.0.1:40000"
-            }
+            ]
         )
 
         context = browser.new_context(
-            viewport={"width": 1920, "height": 1080},
+            no_viewport=True,
             user_agent=USER_AGENT
         )
 
