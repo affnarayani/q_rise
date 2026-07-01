@@ -155,36 +155,15 @@ def run():
     try:
         browser = pw.chromium.launch(
             headless=HEADLESS,
-            ignore_default_args=["--enable-automation"],
             args=[
                 "--start-maximized",
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-background-networking",
-                "--disable-background-timer-throttling",
-                "--disable-backgrounding-occluded-windows",
-                "--disable-breakpad",
-                "--disable-client-side-phishing-detection",
-                "--disable-default-apps",
-                "--disable-dev-shm-usage"
+                "--disable-blink-features=AutomationControlled"
             ]
         )
 
         context = browser.new_context(
             no_viewport=True,
-            user_agent=USER_AGENT,
-            extra_http_headers={
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                "accept-language": "en-US,en;q=0.9",
-                "sec-ch-ua": '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": '"Windows"',
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "none",
-                "sec-fetch-user": "?1",
-                "upgrade-insecure-requests": "1"
-            }
+            user_agent=USER_AGENT
         )
 
         context.grant_permissions(["clipboard-read", "clipboard-write"])
@@ -196,10 +175,12 @@ def run():
 
         # ========================================================
         # DIRECT NAVIGATION TO QUORA URL
-        # ========================================================        
-        # 'commit' use karein taaki jaise hi network stream shuru ho, script capture karna shuru kare
-        page.goto(target_url, wait_until="commit")
+        # ========================================================
+        print(f"[STEP] Navigating directly to QUORA post URL: {target_url}...", flush=True)
+        page.goto(target_url, wait_until="domcontentloaded")
         print(f"[OK] {target_url} opened completely", flush=True)
+        
+        # URL par navigate hone ke baad 15, 30 seconds ka random wait
         custom_random_wait(15, 30)
 
         # ========================================================
