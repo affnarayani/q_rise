@@ -240,8 +240,9 @@ def run(decrypt_key: str):
         # 5. Dropdown ke andar "Copy link" par click karna (With Fallback)
         print("[STEP] Attempting to click 'Copy link' option...", flush=True)
         try:
-            copy_link_xpath = "//*[contains(text(), 'Copy link')]"
+            copy_link_xpath = "//div[contains(@class, 'q-box')][.//*[contains(text(), 'Copy link')]]"
             copy_link_btn = wait.until(EC.element_to_be_clickable((By.XPATH, copy_link_xpath)))
+            driver.execute_script("arguments[0].scrollIntoView(true);", copy_link_btn)
             copy_link_btn.click()
             print("[OK] Clicked 'Copy link' successfully.", flush=True)
         except Exception as e:
