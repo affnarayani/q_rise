@@ -155,11 +155,9 @@ def run():
     try:
         browser = pw.chromium.launch(
             headless=HEADLESS,
-            ignore_default_args=["--enable-automation"],
             args=[
                 "--start-maximized",
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox"
+                "--disable-blink-features=AutomationControlled"
             ]
         )
 
@@ -178,59 +176,11 @@ def run():
         # ========================================================
         # DIRECT NAVIGATION TO QUORA URL
         # ========================================================
-        page.add_init_script("""
-            // Webdriver property completely nuke karna
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            
-            // Chrome tokens inject karna (FIXED COMMENT SYNTAX)
-            window.chrome = { runtime: {}, loadTimes: Date.now, csi: () => {} };
-            
-            // Permissions standard spoofing (FIXED COMMENT SYNTAX)
-            const originalQuery = navigator.permissions.query;
-            navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ?
-                Promise.resolve({ state: Notification.permission }) :
-                originalQuery(parameters)
-            );
-        """)
-
         print(f"[STEP] Navigating directly to QUORA post URL: {target_url}...", flush=True)
-        
-        # 'commit' use karein taaki jaise hi network stream shuru ho, script capture karna shuru kare
-        page.goto(target_url, wait_until="commit")
-
-        # Fixed static wait hata kar hum thoda rukaav denge page elements build hone ke liye
-        time.sleep(5) 
-
-        # Content aur Frame detection check
-        page_content = page.content()
-        if "Performing security verification" in page_content or page.locator("iframe[src*='turnstile']").count() > 0:
-            print("[!_!] Turnstile Screen Detected. Attempting safe click...", flush=True)
-            try:
-                # 15 seconds ka explicit wait for selector
-                page.wait_for_selector("iframe[src*='turnstile']", state="attached", timeout=15000)
-                frame = page.frame_locator("iframe[src*='turnstile']")
-                
-                # Checkbox target classes updated
-                checkbox = frame.locator("#challenge-stage, .ctp-checkbox-label, input[type='checkbox']")
-                
-                if checkbox.count() > 0:
-                    print("[+] Target element visible. Clicking checkbox...", flush=True)
-                    checkbox.click()
-                    time.sleep(7)
-                else:
-                    # Fallback coordinate method agar elements nested hoon
-                    box = page.locator("iframe[src*='turnstile']").bounding_box()
-                    if box:
-                        print(f"[+] Clicking bounding box coordinates: ({box['x']}, {box['y']})", flush=True)
-                        page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                        time.sleep(7)
-            except Exception as e:
-                print(f"[-] Turnstile click bypass failed: {e}", flush=True)
-                # Debugging image saved to current workspace folder
-                page.screenshot(path="turnstile_error_state.png")
-
+        page.goto(target_url, wait_until="domcontentloaded")
         print(f"[OK] {target_url} opened completely", flush=True)
+        
+        # URL par navigate hone ke baad 15, 30 seconds ka random wait
         custom_random_wait(15, 30)
 
         # ========================================================
