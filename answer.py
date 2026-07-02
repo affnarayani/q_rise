@@ -327,7 +327,7 @@ def run():
                 imgbb_key = os.getenv("IMGBBB_API_KEY")
                 if imgbb_key:
                     print("[OK] Uploading screenshot to ImgBB...", flush=True)
-                    url = f"https://api.imgbb.com/1/upload?expiration=600&key={imgbb_key}"
+                    url = f"https://api.imgbb.com/1/upload?expiration=86400&key={imgbb_key}"
                     
                     with open(screenshot_path, "rb") as file:
                         response = requests.post(url, files={"image": file})
