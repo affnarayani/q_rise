@@ -226,94 +226,73 @@ def run(decrypt_key: str):
         
         custom_random_wait(15, 30)
         
-        # 4. Dropdown locator ko dhoond kar click karna
-        print("[STEP] Locating and clicking the share/more dropdown wrapper...", flush=True)
+        # ========================================================
+        # NEW DIRECT LINK EXTRACTION (NO DROPDOWN / NO CLIPBOARD)
+        # ========================================================
+        print("[STEP] Extracting target link directly from the page...", flush=True)
         wait = WebDriverWait(driver, 30)
         
-        dropdown_xpath = "(//div[contains(@class, 'q-relative')]//div[contains(@class, 'q-click-wrapper')])[1]"
-        dropdown_trigger = wait.until(EC.element_to_be_clickable((By.XPATH, dropdown_xpath)))
-        dropdown_trigger.click()
+        # Aapka diya hua exact absolute target text locator
+        target_span_xpath = "/html[1]/body[1]/div[2]/div[1]/div[2]/div[1]/div[3]/div[1]/div[1]/div[2]/div[4]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/span[1]/span[1]/a[1]/div[1]/div[1]/div[1]/div[1]/span[1]/span[1]"
         
-        print("[STEP] Waiting for dropdown to render...", flush=True)
-        custom_random_wait(3, 6)
+        # Is text ke parent standard <a> tag ko locate karna URL extract karne ke liye
+        parent_link_xpath = f"{target_span_xpath}/ancestor::a"
         
-        # 5. Dropdown ke andar "Copy link" par click karna (With Fallback)
-        print("[STEP] Attempting to click 'Copy link' option...", flush=True)
-        try:
-            copy_link_xpath = "//div[contains(@class, 'q-box')][.//*[contains(text(), 'Copy link')]]"
-            copy_link_btn = wait.until(EC.element_to_be_clickable((By.XPATH, copy_link_xpath)))
-            driver.execute_script("arguments[0].scrollIntoView(true);", copy_link_btn)
-            copy_link_btn.click()
-            print("[OK] Clicked 'Copy link' successfully.", flush=True)
-        except Exception as e:
-            print(f"[CRITICAL] 'Copy link' button nahi mila ya click nahi hua: {e}", flush=True)
-            sys.exit(1)
+        target_span_el = wait.until(EC.visibility_of_element_located((By.XPATH, target_span_xpath)))
+        parent_link_el = driver.find_element(By.XPATH, parent_link_xpath)
         
-        # Clipboard se URL read karna via generic JS runtime execution
-        copied_url = driver.execute_script("return navigator.clipboard.readText();")
-        print(f"[COPIED URL] Link from clipboard: {copied_url}", flush=True)
+        # Content aur Href link extract karna
+        raw_text = target_span_el.text
+        copied_url = parent_link_el.get_attribute("href")
+        
+        print(f"[EXTRACTED URL] Href link found: {copied_url}", flush=True)
         
         # 6. Copied link par navigate karna
         if copied_url and str(copied_url).startswith("http"):
-            print(f"[STEP] Navigating to copied link...", flush=True)
+            print(f"[STEP] Navigating to extracted link...", flush=True)
             driver.get(copied_url)
             
-            print("[STEP] Checking for Cloudflare barriers on Copied link...", flush=True)
+            print("[STEP] Checking for Cloudflare barriers on Target link...", flush=True)
             solve(driver, detect_timeout=5, solve_timeout=30, verify=True)
             
-            print("[STEP] Waiting after navigating to copied link...", flush=True)
+            print("[STEP] Waiting after navigating to extracted link...", flush=True)
             custom_random_wait(15, 30)
             
-            # 7. New Locator se Text extract aur Validation check karna
-            print("[STEP] Attempting to extract text from the new targeted CSS locator...", flush=True)
-            target_css = ".q-text.puppeteer_test_question_title"
+            # Text Validation check
+            if len(raw_text) < 30:
+                print(f"[CRITICAL] Extracted text is less than 30 chars ({len(raw_text)} chars). Exiting script with status 1.", flush=True)
+                sys.exit(1)
             
-            target_text_locator = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, target_css)))
-            raw_text = target_text_locator.text
+            cleaned_content = " ".join(raw_text.replace("\n", " ").replace("\r", " ").split())
+            print(f"[OK] Text validation passed and formatted successfully.", flush=True)
             
-            if target_text_locator.is_displayed():
-                if len(raw_text) < 30:
-                    print(f"[CRITICAL] Extracted text is less than 30 chars ({len(raw_text)} chars). Exiting script with status 1.", flush=True)
-                    sys.exit(1)
-                
-                cleaned_content = " ".join(raw_text.replace("\n", " ").replace("\r", " ").split())
-                print(f"[OK] Text validation passed and formatted successfully.", flush=True)
-                
-                print("[STEP] Clicking on the locator to navigate to the next page...", flush=True)
-                target_text_locator.click()
-                
-                print("[STEP] Checking for Cloudflare barriers after title click...", flush=True)
-                solve(driver, detect_timeout=5, solve_timeout=30, verify=True)
-                
-                raw_navigated_url = driver.current_url
-                clean_navigated_url = raw_navigated_url.split("?")[0]
-                print(f"[NEW URL] Navigated URL (Cleaned): {clean_navigated_url}", flush=True)
+            # Navigated URL filtering
+            raw_navigated_url = driver.current_url
+            clean_navigated_url = raw_navigated_url.split("?")[0]
+            print(f"[NEW URL] Current URL (Cleaned): {clean_navigated_url}", flush=True)
 
-                if not clean_navigated_url.startswith("https://www.quora.com"):
-                    print(f"[CRITICAL] URL '{clean_navigated_url}' Quora domain se shuru nahi ho raha hai! Exiting script with status 1.", flush=True)
-                    sys.exit(1)
-                
-                print(f"[STEP] Checking if {clean_navigated_url} exists in {ANSWERED_JSON_FILE}...", flush=True)
-                if is_link_already_answered(clean_navigated_url, ANSWERED_JSON_FILE):
-                    print(f"[EXIT 1] Link is already present in {ANSWERED_JSON_FILE}. Leaving status.json untouched.", flush=True)
-                    sys.exit(1)
-                
-                print("[OK] Link is brand new, proceeding to update status.json...", flush=True)
+            if not clean_navigated_url.startswith("https://www.quora.com"):
+                print(f"[CRITICAL] URL '{clean_navigated_url}' Quora domain se shuru nahi ho raha hai! Exiting script with status 1.", flush=True)
+                sys.exit(1)
+            
+            print(f"[STEP] Checking if {clean_navigated_url} exists in {ANSWERED_JSON_FILE}...", flush=True)
+            if is_link_already_answered(clean_navigated_url, ANSWERED_JSON_FILE):
+                print(f"[EXIT 1] Link is already present in {ANSWERED_JSON_FILE}. Leaving status.json untouched.", flush=True)
+                sys.exit(1)
+            
+            print("[OK] Link is brand new, proceeding to update status.json...", flush=True)
 
-                # STATUS JSON UPDATE
-                status_data["post_to_answer_found"] = True
-                status_data["link_to_post_to_answer"] = clean_navigated_url
-                status_data["content_of_post_to_answer"] = cleaned_content
-                
-                with open(status_path, "w", encoding="utf-8") as sf:
-                    json.dump(status_data, sf, indent=4, ensure_ascii=False)
-                print("[OK] status.json has been successfully updated.", flush=True)
-                
-            else:
-                print("[WARNING] Targeted text locator visible nahi mila. status.json update nahi hua.", flush=True)
+            # STATUS JSON UPDATE
+            status_data["post_to_answer_found"] = True
+            status_data["link_to_post_to_answer"] = clean_navigated_url
+            status_data["content_of_post_to_answer"] = cleaned_content
+            
+            with open(status_path, "w", encoding="utf-8") as sf:
+                json.dump(status_data, sf, indent=4, ensure_ascii=False)
+            print("[OK] status.json has been successfully updated.", flush=True)
                 
         else:
-            print("[WARNING] Clipboard mein valid URL nahi mila. Process ignored.", flush=True)
+            print("[WARNING] Valid URL extract nahi ho paaya. Process ignored.", flush=True)
         
         print("[STEP] Initiating final post-execution delay...", flush=True)
         custom_random_wait(15, 30)
