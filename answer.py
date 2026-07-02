@@ -211,7 +211,7 @@ def run():
         print("[STEP] Locating 'Answer' button...", flush=True)
         
         # XPath matching both "Answer ·" and "Answer" text variants
-        answer_xpath = "//button[descendant::*[contains(text(), 'Answer')]] | //div[contains(text(), 'Answer')]"
+        answer_xpath = "//button[normalize-space()='Answer'] | //div[normalize-space()='Answer']"
         wait = WebDriverWait(driver, 30)
         answer_btn = wait.until(EC.element_to_be_clickable((By.XPATH, answer_xpath)))
         answer_btn.click()
@@ -223,7 +223,6 @@ def run():
         # LOCATE POP-UP TEXT FIELD & TYPE ANSWER
         # ========================================================
         print("[STEP] Locating text editor field inside pop-up...", flush=True)
-        
         editor_xpath = "//*[contains(@class, 'doc') and (contains(@class, 'dark_mode') or contains(@class, 'empty'))]"
         editor_field = wait.until(EC.element_to_be_clickable((By.XPATH, editor_xpath)))
         editor_field.click()
