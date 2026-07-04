@@ -517,6 +517,49 @@ def run():
                 custom_random_wait(30, 60)
             else:
                 print("❌ Max retries reached. Streaming complete nahi ho payi. Exiting script...", flush=True)
+
+                # ============================================
+                # LAST FALLBACK: Strictly target the precise pattern
+                # ============================================
+                print("[FALLBACK] Attempting to locate text with '{\"answer\":' pattern...", flush=True)
+                fallback_element = page.get_by_text(__import__('re').compile(r'\{\s*"answer"\s*:\s*".*?"\}', __import__('re').DOTALL))
+                
+                if fallback_element.count() > 0:
+                    try:
+                        raw_text = fallback_element.first.inner_text().strip()
+                        print(f"[FALLBACK OK] Text found: {raw_text[:100]}...", flush=True)
+                        
+                        # Strictly parsing the raw text directly into JSON without modifications
+                        parsed_json = json.loads(raw_text)
+                        generated_answer_text = parsed_json.get("answer", "").strip()
+                        
+                        if generated_answer_text:
+                            generated_answer_text = generated_answer_text.replace("\n", " ").replace("\r", "")
+                            
+                            print("[FALLBACK STEP] Updating status.json with fallback answer data...", flush=True)
+                            status_data["answer"] = generated_answer_text
+                            status_data["answer_generated"] = True
+                            
+                            with status_file.open("w", encoding="utf-8") as f:
+                                json.dump(status_data, f, indent=4, ensure_ascii=False)
+                            print("[FALLBACK OK] status.json successfully updated via fallback!", flush=True)
+                            
+                            state["total_answers"] += 1
+                            if include_profile_mention:
+                                state["cta_count"] += 1
+                            save_state(state)
+                            
+                            custom_random_wait(15, 30)
+                            try:
+                                browser.close()
+                            except:
+                                pass
+                            sys.exit(0)
+                    except Exception as fallback_err:
+                        print(f"[FALLBACK ERROR] Fallback text parsing failed: {fallback_err}", flush=True)
+                else:
+                    print("[FALLBACK INFO] No text matching '{\"answer\":' pattern found on screen.", flush=True)
+                    
                 if 'page' in locals() and page:
                     try:
                         screenshot_path = "error_screenshot.png"
