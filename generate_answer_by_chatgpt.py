@@ -516,7 +516,7 @@ def run():
                 print(f"[WARNING] Code block completely write nahi hua ya block mila nahi. Next retry window...", flush=True)
                 custom_random_wait(30, 60)
             else:
-                print("❌ Max retries reached. Streaming complete nahi ho payi. Exiting script...", flush=True)
+                print("Max retries reached. Attempting fallback...", flush=True)
 
                 # ============================================
                 # LAST FALLBACK: Strictly target the precise pattern
