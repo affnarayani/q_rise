@@ -482,7 +482,7 @@ def run():
         code_block_locator = page.locator('#code-block-viewer pre')
         
         json_content = None
-        for attempt in range(1, 6):
+        for attempt in range(1, 4):
             print(f"[STEP] Checking code block locator (Attempt {attempt}/5)...", flush=True)
             
             if code_block_locator.count() > 0:
