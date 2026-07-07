@@ -209,7 +209,7 @@ def run():
         # CLICK "Answer" BUTTON
         # ========================================================
         print("[STEP] Locating 'Answer' button...", flush=True)
-        
+        driver.execute_script("window.scrollBy(500, 0);")
         # XPath matching both "Answer ·" and "Answer" text variants
         answer_xpath = "//button[normalize-space()='Answer'] | //div[normalize-space()='Answer'] | //div[@class='q-text qu-ellipsis qu-whiteSpace--nowrap'][normalize-space()='Answer']"
         wait = WebDriverWait(driver, 30)
