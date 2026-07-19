@@ -7,6 +7,7 @@ import random
 from pathlib import Path
 from typing import List, Dict, Any
 
+import requests
 from dotenv import load_dotenv
 
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -233,6 +234,32 @@ def run(decrypt_key: str):
             print("[OK] Clicked 'Copy link' successfully.", flush=True)
         except Exception as e:
             print(f"[CRITICAL] 'Copy link' button nahi mila ya click nahi hua: {e}", flush=True)
+            if 'page' in locals() and page:
+                try:
+                    screenshot_path = "error_screenshot.png"
+                    page.screenshot(path=screenshot_path, full_page=True)
+                    print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
+                    
+                    imgbb_key = os.getenv("IMGBBB_API_KEY")
+                    if imgbb_key:
+                        print("[OK] Uploading screenshot to ImgBB...", flush=True)
+                        url = f"https://api.imgbb.com/1/upload?expiration=86400&key={imgbb_key}"
+                        
+                        with open(screenshot_path, "rb") as file:
+                            response = requests.post(url, files={"image": file})
+                        
+                        if response.status_code == 200:
+                            res_data = response.json()
+                            direct_url = res_data["data"]["display_url"]
+                            print("\n" + "="*50, flush=True)
+                            print(f"👉 DIRECT SCREENSHOT LINK: {direct_url}", flush=True)
+                            print("="*50 + "\n", flush=True)
+                        else:
+                            print(f"[WARNING] ImgBB Upload Failed Status: {response.status_code}", flush=True)
+                    else:
+                        print("[WARNING] IMGBBB_API_KEY environment variable not found.", flush=True)
+                except Exception as screenshot_err:
+                    print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
             sys.exit(1)
         
         # Clipboard se URL read karna
@@ -258,6 +285,32 @@ def run(decrypt_key: str):
                 # Check agar text 30 characters se kam hai toh exit 1 dena hai
                 if len(raw_text) < 30:
                     print(f"[CRITICAL] Extracted text is less than 30 chars ({len(raw_text)} chars). Exiting script with status 1.", flush=True)
+                    if 'page' in locals() and page:
+                        try:
+                            screenshot_path = "error_screenshot.png"
+                            page.screenshot(path=screenshot_path, full_page=True)
+                            print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
+                            
+                            imgbb_key = os.getenv("IMGBBB_API_KEY")
+                            if imgbb_key:
+                                print("[OK] Uploading screenshot to ImgBB...", flush=True)
+                                url = f"https://api.imgbb.com/1/upload?expiration=86400&key={imgbb_key}"
+                                
+                                with open(screenshot_path, "rb") as file:
+                                    response = requests.post(url, files={"image": file})
+                                
+                                if response.status_code == 200:
+                                    res_data = response.json()
+                                    direct_url = res_data["data"]["display_url"]
+                                    print("\n" + "="*50, flush=True)
+                                    print(f"👉 DIRECT SCREENSHOT LINK: {direct_url}", flush=True)
+                                    print("="*50 + "\n", flush=True)
+                                else:
+                                    print(f"[WARNING] ImgBB Upload Failed Status: {response.status_code}", flush=True)
+                            else:
+                                print("[WARNING] IMGBBB_API_KEY environment variable not found.", flush=True)
+                        except Exception as screenshot_err:
+                            print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
                     sys.exit(1)
                 
                 # Text se saare newlines ko space se replace karna aur clean karna
@@ -279,6 +332,32 @@ def run(decrypt_key: str):
                 # ==================================================
                 if not clean_navigated_url.startswith("https://www.quora.com"):
                     print(f"[CRITICAL] URL '{clean_navigated_url}' Quora domain se shuru nahi ho raha hai! Exiting script with status 1.", flush=True)
+                    if 'page' in locals() and page:
+                        try:
+                            screenshot_path = "error_screenshot.png"
+                            page.screenshot(path=screenshot_path, full_page=True)
+                            print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
+                            
+                            imgbb_key = os.getenv("IMGBBB_API_KEY")
+                            if imgbb_key:
+                                print("[OK] Uploading screenshot to ImgBB...", flush=True)
+                                url = f"https://api.imgbb.com/1/upload?expiration=86400&key={imgbb_key}"
+                                
+                                with open(screenshot_path, "rb") as file:
+                                    response = requests.post(url, files={"image": file})
+                                
+                                if response.status_code == 200:
+                                    res_data = response.json()
+                                    direct_url = res_data["data"]["display_url"]
+                                    print("\n" + "="*50, flush=True)
+                                    print(f"👉 DIRECT SCREENSHOT LINK: {direct_url}", flush=True)
+                                    print("="*50 + "\n", flush=True)
+                                else:
+                                    print(f"[WARNING] ImgBB Upload Failed Status: {response.status_code}", flush=True)
+                            else:
+                                print("[WARNING] IMGBBB_API_KEY environment variable not found.", flush=True)
+                        except Exception as screenshot_err:
+                            print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
                     sys.exit(1)
                 
                 # ==================================================
@@ -287,6 +366,32 @@ def run(decrypt_key: str):
                 print(f"[STEP] Checking if {clean_navigated_url} exists in {ANSWERED_JSON_FILE}...", flush=True)
                 if is_link_already_answered(clean_navigated_url, ANSWERED_JSON_FILE):
                     print(f"[EXIT 1] Link is already present in {ANSWERED_JSON_FILE} (considering trailing slash mapping). Leaving status.json untouched.", flush=True)
+                    if 'page' in locals() and page:
+                        try:
+                            screenshot_path = "error_screenshot.png"
+                            page.screenshot(path=screenshot_path, full_page=True)
+                            print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
+                            
+                            imgbb_key = os.getenv("IMGBBB_API_KEY")
+                            if imgbb_key:
+                                print("[OK] Uploading screenshot to ImgBB...", flush=True)
+                                url = f"https://api.imgbb.com/1/upload?expiration=86400&key={imgbb_key}"
+                                
+                                with open(screenshot_path, "rb") as file:
+                                    response = requests.post(url, files={"image": file})
+                                
+                                if response.status_code == 200:
+                                    res_data = response.json()
+                                    direct_url = res_data["data"]["display_url"]
+                                    print("\n" + "="*50, flush=True)
+                                    print(f"👉 DIRECT SCREENSHOT LINK: {direct_url}", flush=True)
+                                    print("="*50 + "\n", flush=True)
+                                else:
+                                    print(f"[WARNING] ImgBB Upload Failed Status: {response.status_code}", flush=True)
+                            else:
+                                print("[WARNING] IMGBBB_API_KEY environment variable not found.", flush=True)
+                        except Exception as screenshot_err:
+                            print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
                     sys.exit(1)
                 
                 print("[OK] Link is brand new, proceeding to update status.json...", flush=True)
@@ -324,8 +429,27 @@ def run(decrypt_key: str):
                 screenshot_path = "error_screenshot.png"
                 page.screenshot(path=screenshot_path, full_page=True)
                 print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
+                
+                imgbb_key = os.getenv("IMGBBB_API_KEY")
+                if imgbb_key:
+                    print("[OK] Uploading screenshot to ImgBB...", flush=True)
+                    url = f"https://api.imgbb.com/1/upload?expiration=86400&key={imgbb_key}"
+                    
+                    with open(screenshot_path, "rb") as file:
+                        response = requests.post(url, files={"image": file})
+                    
+                    if response.status_code == 200:
+                        res_data = response.json()
+                        direct_url = res_data["data"]["display_url"]
+                        print("\n" + "="*50, flush=True)
+                        print(f"👉 DIRECT SCREENSHOT LINK: {direct_url}", flush=True)
+                        print("="*50 + "\n", flush=True)
+                    else:
+                        print(f"[WARNING] ImgBB Upload Failed Status: {response.status_code}", flush=True)
+                else:
+                    print("[WARNING] IMGBBB_API_KEY environment variable not found.", flush=True)
             except Exception as screenshot_err:
-                print(f"[WARNING] Could not capture screenshot: {screenshot_err}", flush=True)
+                print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
         sys.exit(1)
 
     finally:
