@@ -2,6 +2,6 @@
     "post_to_answer_found": true,
     "link_to_post_to_answer": "https://www.quora.com/unanswered/How-do-you-handle-the-stress-of-realizing-youre-overthinking-a-simple-coding-problem-during-an-interview",
     "content_of_post_to_answer": "How do you handle the stress of realizing you're overthinking a simple coding problem during an interview?",
-    "answer_generated": false,
-    "answer": ""
+    "answer_generated": true,
+    "answer": "A lot of interview overthinking comes from treating the problem as a test of intelligence instead of a test of process. Experienced engineers are not the people who never get stuck; they are the people who notice when their reasoning has become too complex and deliberately return to simpler assumptions. The skill being evaluated is often not finding the trick, but knowing when you are searching for one that isn't there."
 }
