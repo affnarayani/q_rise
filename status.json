@@ -1,7 +1,7 @@
 {
-    "post_to_answer_found": true,
-    "link_to_post_to_answer": "https://www.quora.com/unanswered/What-is-your-favorite-way-to-stay-focused-during-a-long-day-of-data-work",
-    "content_of_post_to_answer": "What is your favorite way to stay focused during a long day of data work?",
-    "answer_generated": true,
-    "answer": "For long data work, I find focus is less about forcing concentration and more about protecting the quality of attention. The hidden drain is not always the workload; it is the constant switching between cleaning data, answering messages, checking results, and making decisions. I try to separate exploration from execution because deep analysis needs a different mental mode. Good data work is not just staying busy longer; it is creating enough uninterrupted space to notice what the numbers are actually saying."
+    "post_to_answer_found": false,
+    "link_to_post_to_answer": "",
+    "content_of_post_to_answer": "",
+    "answer_generated": false,
+    "answer": ""
 }
