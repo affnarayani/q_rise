@@ -148,18 +148,16 @@ def is_link_already_answered(url: str, answered_file: str) -> bool:
         
     return False
 
-def upload_to_tmpfiles(screenshot_path):
-    url = "https://tmpfiles.org/api/v1/upload"
+def upload_to_onlyfiles(screenshot_path):
+    url = "https://api.onlyfiles.com/v1/upload"
     
     with open(screenshot_path, "rb") as file:
-        response = requests.post(url, files={"file": file})
+        response = requests.post(url, files={"file": file}, data={"expire": 172800})
         
     if response.status_code == 200:
         res_data = response.json()
-        # Direct view URL banane ke liye '/dl/' replace karte hain
-        page_url = res_data["data"]["url"]
-        direct_url = page_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
-        print(f"👉 DIRECT LINK (Expires in 2 Hours): {direct_url}")
+        direct_url = res_data["data"]["file"]["url"]["full"]
+        print(f"👉 DIRECT LINK (Expires in 48 Hours): {direct_url}")
         return direct_url
     else:
         print(f"[WARNING] Upload Failed: {response.status_code}")
@@ -256,7 +254,7 @@ def run(decrypt_key: str):
                     page.screenshot(path=screenshot_path, full_page=True)
                     print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
                     
-                    upload_to_tmpfiles(screenshot_path)
+                    upload_to_onlyfiles(screenshot_path)
                 except Exception as screenshot_err:
                     print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
             sys.exit(1)
@@ -290,7 +288,7 @@ def run(decrypt_key: str):
                             page.screenshot(path=screenshot_path, full_page=True)
                             print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
                             
-                            upload_to_tmpfiles(screenshot_path)
+                            upload_to_onlyfiles(screenshot_path)
                         except Exception as screenshot_err:
                             print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
                     sys.exit(1)
@@ -320,7 +318,7 @@ def run(decrypt_key: str):
                             page.screenshot(path=screenshot_path, full_page=True)
                             print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
                             
-                            upload_to_tmpfiles(screenshot_path)
+                            upload_to_onlyfiles(screenshot_path)
                         except Exception as screenshot_err:
                             print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
                     sys.exit(1)
@@ -337,7 +335,7 @@ def run(decrypt_key: str):
                             page.screenshot(path=screenshot_path, full_page=True)
                             print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
                             
-                            upload_to_tmpfiles(screenshot_path)
+                            upload_to_onlyfiles(screenshot_path)
                         except Exception as screenshot_err:
                             print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
                     sys.exit(1)
@@ -378,7 +376,7 @@ def run(decrypt_key: str):
                 page.screenshot(path=screenshot_path, full_page=True)
                 print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
                 
-                upload_to_tmpfiles(screenshot_path)
+                upload_to_onlyfiles(screenshot_path)
             except Exception as screenshot_err:
                 print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
         sys.exit(1)
