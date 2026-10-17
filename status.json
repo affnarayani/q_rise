@@ -1,7 +1,7 @@
 {
-    "post_to_answer_found": true,
-    "link_to_post_to_answer": "https://www.quora.com/unanswered/Is-there-a-method-to-balance-between-overthinking-a-problem-and-jumping-into-coding-too-quickly",
-    "content_of_post_to_answer": "Is there a method to balance between overthinking a problem and jumping into coding too quickly?",
-    "answer_generated": true,
-    "answer": "I use a simple distinction: think until you can identify the next test, not until you feel certain. Before coding, write down the problem, your current assumption, and the smallest experiment that could prove it wrong. If more thinking won't change that experiment, start coding. If the experiment exposes a gap, return to thinking. I've explored this thinking-versus-action pattern further on my Quora profile, because the real skill isn't eliminating uncertainty; it's knowing when uncertainty has become testable."
+    "post_to_answer_found": false,
+    "link_to_post_to_answer": "",
+    "content_of_post_to_answer": "",
+    "answer_generated": false,
+    "answer": ""
 }
