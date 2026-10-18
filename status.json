@@ -1,7 +1,7 @@
 {
-    "post_to_answer_found": true,
-    "link_to_post_to_answer": "https://www.quora.com/Can-a-system-ever-be-optimized-enough-to-account-for-human-emotion",
-    "content_of_post_to_answer": "Can a system ever be optimized enough to account for human emotion?",
-    "answer_generated": true,
-    "answer": "A system can be optimized to predict emotional responses, but prediction is not the same as understanding. Human emotions are shaped by context, memory, relationships, and even contradictions people cannot explain themselves. The deeper challenge is deciding which emotions to accommodate and which to challenge. A system that treats every emotional response as a problem to eliminate may become efficient at processing people while becoming increasingly incapable of serving them."
+    "post_to_answer_found": false,
+    "link_to_post_to_answer": "",
+    "content_of_post_to_answer": "",
+    "answer_generated": false,
+    "answer": ""
 }
