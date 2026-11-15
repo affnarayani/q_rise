@@ -1,0 +1,50 @@
+﻿# ============================================================
+# ChatGPT Platform Locators (chatgpt.com)
+# Format: locator_name = page.<playwright_expression>
+# Duplicate names: first entry is primary, subsequent same-named entries are fallbacks.
+# All expressions are checked immediately; first match wins (no waiting on timeouts).
+# Image generation flow: open chatgpt -> input prompt -> send prompt -> wait for image -> share -> download
+# ============================================================
+
+# --- Chat composer / input ---
+# Primary: main chat textbox ('Chat with ChatGPT' or 'Ask ChatGPT')
+chatgpt_textbox = page.get_by_role('textbox', name='Chat with ChatGPT').or_(page.get_by_role('textbox', name='Ask ChatGPT'))
+# Fallback: contenteditable div containing 'Ask anything' paragraph
+chatgpt_textbox = page.locator('div[contenteditable="true"]').filter(has=page.locator('p', has_text='Ask anything')).first
+# Fallback: prompt textarea by id
+chatgpt_textbox = page.locator('#prompt-textarea')
+
+# --- Send button ---
+chatgpt_send_button = page.get_by_test_id('send-button').or_(page.get_by_role('button', name='Send'))
+
+# --- Authentication & profile ---
+# Profile / account menu button used to verify login success
+chatgpt_profile_button = page.get_by_role('button', name='Open profile menu')
+
+# --- Code block / generated content ---
+# JSON code block rendered by ChatGPT (viewer pre, edit code textbox, or inline code)
+chatgpt_code_block = page.locator('#code-block-viewer pre').or_(page.get_by_role('textbox', name='Edit code')).or_(page.get_by_role('code'))
+
+# --- Image generation ---
+# Button to create a new image
+chatgpt_create_image_button = page.get_by_role('button', name='Create an image', exact=True)
+# Primary share button after an image is generated
+chatgpt_share_image_button = page.get_by_role('button', name='Share this image')
+# Fallback share button wording
+chatgpt_share_image_button = page.get_by_role("button", name="Share generated image")
+# Primary download button
+chatgpt_download_button = page.get_by_role('button', name='Download')
+# Fallback download button wording
+chatgpt_download_button = page.get_by_role('button', name='Download file')
+# Fallback download button by icon/svg
+chatgpt_download_button = page.locator('button:has(svg.lucide-download)')
+
+# --- Feedback / preference buttons ---
+# Preference buttons shown when feedback is required during generation
+chatgpt_feedback_buttons = page.get_by_test_id('paragen-prefer-response-button')
+
+# --- Share / copy link flow ---
+# Copy link button inside the share popup
+chatgpt_copy_link_button = page.get_by_role('button', name='Copy link')
+# Save button on the public shared image page
+chatgpt_save_button = page.get_by_role('button', name='Save')

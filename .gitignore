@@ -1,4 +1,7 @@
-.env
+﻿.env
 /temp/
-encrypt.py
 .venv/
+__pycache__/
+*.pyc
+error/error_screenshot.png
+error/vision_*.png

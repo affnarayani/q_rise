@@ -1,161 +1,42 @@
+﻿import json
 import os
-import sys
-import json
-import time
-import base64
 import random
+import re
+import sys
+import time
 from pathlib import Path
-from typing import List, Dict, Any
-import requests
+
 from dotenv import load_dotenv
-
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.exceptions import InvalidTag
-
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 
-
-# =========================
-# CONFIG
-# =========================
-HEADLESS = True
-
-COOKIES_DIR = Path("chatgpt_cookies")
-encrypted_files = list(COOKIES_DIR.glob("*.encrypted"))
-
-if not encrypted_files:
-    raise RuntimeError("❌ No .encrypted cookie files found in 'chatgpt_cookies/' folder")
-
-CHATGPT_COOKIES_FILE = random.choice(encrypted_files)
-print(f"[OK] Randomly selected cookie file: {CHATGPT_COOKIES_FILE.name}", flush=True)
-
-PBKDF2_ITERATIONS = 200_000
-
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+from common.config import get_path, load_config
+from common.locator_runtime import run_with_locator, try_with_locator, get_locator_candidates
+from common.locators import apply_auto_correct_if_enabled
+from common.utils import custom_random_wait, load_playwright_cookies, pick_random_encrypted_cookie, read_json, save_error_screenshot, write_json
 
 
-# =========================
-# ENV
-# =========================
-load_dotenv()
-
-DECRYPT_KEY = os.getenv("DECRYPT_KEY")
-
-if not DECRYPT_KEY:
-    raise RuntimeError("DECRYPT_KEY missing")
-
-
-# =========================
-# RANDOM WAIT
-# =========================
-def custom_random_wait(min_sec, max_sec):
-    seconds = random.uniform(min_sec, max_sec)
-    print(f"[WAIT] Sleeping for {seconds:.2f} seconds...", flush=True)
-    time.sleep(seconds)
-
-
-# =========================
-# CRYPTO
-# =========================
-def _derive_key(password: bytes, salt: bytes) -> bytes:
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=salt,
-        iterations=PBKDF2_ITERATIONS,
-    )
-    return kdf.derive(password)
-
-
-def _decrypt_payload(payload: Dict[str, Any], password: str) -> bytes:
-    salt = base64.b64decode(payload["s"])
-    nonce = base64.b64decode(payload["n"])
-    ciphertext = base64.b64decode(payload["ct"])
-
-    key = _derive_key(password.encode("utf-8"), salt)
-    aesgcm = AESGCM(key)
-
-    try:
-        return aesgcm.decrypt(nonce, ciphertext, None)
-    except InvalidTag:
-        raise RuntimeError("❌ Decryption failed (InvalidTag)")
-
-
-def load_cookies(file_path: Path) -> List[Dict[str, Any]]:
-    print("[STEP] Loading cookies...", flush=True)
-
-    with file_path.open("r", encoding="utf-8") as f:
-        payload = json.load(f)
-
-    plaintext = _decrypt_payload(payload, DECRYPT_KEY)
-    cookies = json.loads(plaintext.decode("utf-8"))
-
-    # normalize SameSite and PartitionKey
-    for c in cookies:
-        if "partitionKey" in c and isinstance(c["partitionKey"], dict):
-            if "topLevelSite" in c["partitionKey"]:
-                c["partitionKey"] = str(c["partitionKey"]["topLevelSite"])
-            else:
-                del c["partitionKey"]
-
-        if "sameSite" in c:
-            val = str(c["sameSite"]).lower()
-
-            if val in ["no_restriction", "none", "unspecified", "null"]:
-                c["sameSite"] = "None"
-            elif val == "lax":
-                c["sameSite"] = "Lax"
-            elif val == "strict":
-                c["sameSite"] = "Strict"
-            else:
-                c["sameSite"] = "Lax"
-
-    print("[OK] Cookies loaded", flush=True)
-    return cookies
-
-def upload_to_onlyfiles(screenshot_path):
-    url = "https://api.onlyfiles.com/v1/upload"
-    
-    with open(screenshot_path, "rb") as file:
-        response = requests.post(url, files={"file": file}, data={"expire": 172800})
-        
-    if response.status_code == 200:
-        res_data = response.json()
-        direct_url = res_data["data"]["file"]["url"]["full"]
-        print(f"👉 DIRECT LINK (Expires in 48 Hours): {direct_url}")
-        return direct_url
-    else:
-        print(f"[WARNING] Upload Failed: {response.status_code}")
-        return None
-
-# =========================
-# MAIN
-# =========================
 def run():
     print("[START] Script started", flush=True)
+    load_dotenv()
+    config = load_config()
+    apply_auto_correct_if_enabled(config)
 
-    # =========================
-    # STATUS CHECK
-    # =========================
-    status_file = Path("status.json")
-    if not status_file.exists():
-        print("[ERROR] status.json file nahi mila. Exiting...", flush=True)
-        sys.exit(0)
-        
-    try:
-        with status_file.open("r", encoding="utf-8") as f:
-            status_data = json.load(f)
-    except Exception as e:
-        print(f"[ERROR] status.json parse nahi ho paya: {e}. Exiting...", flush=True)
+    status_path = get_path(config, "status_file")
+    cta_state_path = get_path(config, "quora_cta_state_file")
+    cookies_dir = get_path(config, "chatgpt_cookies_dir")
+    decrypt_key = os.getenv("DECRYPT_KEY")
+    if not decrypt_key:
+        raise RuntimeError("DECRYPT_KEY missing")
+
+    status_data = read_json(status_path, None)
+    if not isinstance(status_data, dict):
+        print("[ERROR] status.json file not found or invalid. Exiting...", flush=True)
         sys.exit(0)
 
     post_found = status_data.get("post_to_answer_found", False)
     answer_gen = status_data.get("answer_generated", False)
 
-    # Condition Check (Pylance typo fixed here)
     if post_found is True and answer_gen is False:
         print("[OK] Status check passed (post_to_answer_found is True & answer_generated is False). Proceeding...", flush=True)
     else:
@@ -165,94 +46,73 @@ def run():
             print("Answer already generated!", flush=True)
         sys.exit(0)
 
-    # Target content extract karna prompt ke liye
     post_content = status_data.get("content_of_post_to_answer", "")
     if not post_content:
-        print("[ERROR] content_of_post_to_answer khali hai. Exiting...", flush=True)
+        print("[ERROR] content_of_post_to_answer is empty. Exiting...", flush=True)
         sys.exit(0)
 
-    cookies = load_cookies(Path(CHATGPT_COOKIES_FILE))
+    cookie_file = pick_random_encrypted_cookie(cookies_dir)
+    cookies = load_playwright_cookies(cookie_file, decrypt_key, config["pbkdf2_iterations"])
     print(f"[OK] Total cookies loaded: {len(cookies)}", flush=True)
 
-    # =========================
-    # STEALTH SETUP & LOGIN
-    # =========================
     stealth = Stealth()
     pw_cm = stealth.use_sync(sync_playwright())
     pw = pw_cm.__enter__()
-
     browser = None
+    page = None
     try:
         browser = pw.chromium.launch(
-            headless=HEADLESS,
-            args=[
-                "--start-maximized",
-                "--disable-blink-features=AutomationControlled"
-            ]
+            headless=bool(config.get("headless", True)),
+            args=["--start-maximized", "--disable-blink-features=AutomationControlled"]
         )
-
-        context = browser.new_context(
-            no_viewport=True,
-            user_agent=USER_AGENT
-        )
-
+        context = browser.new_context(no_viewport=True, user_agent=config.get("user_agent", ""))
         context.grant_permissions(["clipboard-read", "clipboard-write"])
         print("[STEP] Adding cookies to browser context...", flush=True)
         context.add_cookies(cookies)
-
         page = context.new_page()
         print("[OK] Cookies added successfully", flush=True)
 
         print("[STEP] Opening ChatGPT Main URL...", flush=True)
-        page.goto(
-            "https://chatgpt.com/",
-            wait_until="load"
-        )
+        page.goto("https://chatgpt.com/", wait_until="load")
         print("[OK] URL opened successfully (Logged In)", flush=True)
+        custom_random_wait(config, "random")
 
-        # 15 to 30 seconds random wait after page load
-        custom_random_wait(30, 60)
-
-        # ============================================
-        # CHECK LOGIN SUCCESS VIA USER PROFILE BUTTON
-        # ============================================
         print("[STEP] Checking login success via profile button...", flush=True)
-        profile_button = page.get_by_role('button', name=list(map(lambda x: x.compile(r'.*Free, open'), [__import__('re')]))[0]).or_(page.get_by_role('button', name='Open profile menu'))
-        
-        if profile_button.count() > 0:
-            print(f"[OK] LOGIN SUCCESS: Profile button found -> '{profile_button.first.get_attribute('aria-label') or 'User Account'}'", flush=True)
+        pw_context = {"page": page, "re": re, "__import__": __import__}
+        ok_profile, profile_obj = try_with_locator(
+            config, "chatgpt", "chatgpt_profile_button", pw_context,
+            "Check ChatGPT login/profile button visibility", lambda obj: obj.first, allow_vision=False
+        )
+        if ok_profile:
+            try:
+                aria = profile_obj.get_attribute("aria-label") or "User Account"
+                print(f"[OK] LOGIN SUCCESS: Profile button found -> '{aria}'", flush=True)
+            except Exception:
+                print("[OK] LOGIN SUCCESS: Profile button found", flush=True)
         else:
             print("[WARNING] Profile button not detected directly, proceeding with caution...", flush=True)
 
-        # =========================
-        # AUTOMATION FLOW
-        # =========================
         print("[STEP] Locating chat textbox...", flush=True)
-        
-        # Fallback Strategy for Textbox Locators
-        textbox = page.get_by_role('textbox', name='Chat with ChatGPT').or_(page.get_by_role('textbox', name='Ask ChatGPT'))
-        
-        if textbox.count() == 0:
-            print("[INFO] Fallback 1: Searching for 'Ask anything' paragraph inside textbox context...", flush=True)
-            textbox = page.locator('div[contenteditable="true"]').filter(has=page.locator('p', has_text='Ask anything')).first
-            
-        if textbox.count() == 0:
-            print("[INFO] Fallback 2: Searching via CSS Selector '#prompt-textarea'...", flush=True)
-            textbox = page.locator('#prompt-textarea')
-
-        # Trigger action if found
-        if textbox.count() > 0:
-            textbox.first.click()
+        textbox = run_with_locator(
+            config, "chatgpt", "chatgpt_textbox", {"page": page},
+            "Locate ChatGPT prompt textbox", lambda obj: obj.first
+        )
+        try:
+            textbox.click(timeout=5000)
             print("[OK] Textbox located and clicked successfully.", flush=True)
-        else:
-            raise RuntimeError("❌ Textbox locator load nahi ho paya (All strategies failed).")
-            
-        custom_random_wait(15, 30)
+        except Exception:
+            ok_fill_click, _ = try_with_locator(
+                config, "chatgpt", "chatgpt_textbox", {"page": page},
+                "Click ChatGPT prompt textbox via fallback", lambda obj: obj.first.click(timeout=5000), allow_vision=True
+            )
+            if not ok_fill_click:
+                raise RuntimeError("Textbox locator could not be clicked.")
+        custom_random_wait(config, "absolute")
 
         # ============================================
         # PROMPT FOR QUORA NOTES (WITH 50-150 CHAR LIMIT)
         # ============================================
-        STATE_FILE = "quora_cta_state.json"
+        STATE_FILE = str(cta_state_path)
         TARGET_RATIO = 0.35
         LOWER_BOUND = 0.20   # agar ratio isse neeche chala jaaye, force-correct karo
         UPPER_BOUND = 0.50   # agar ratio isse zyada ho jaaye, force-correct karo
@@ -474,45 +334,52 @@ def run():
 
             f"OUTPUT FORMAT — strictly inside a single JSON code block:\n"
             f"{{\n"
-            f'  \"answer\": \"Your final single-line Quora answer here\"\n'
+            f'  "answer": "Your final single-line Quora answer here"\n'
             f"}}\n"
         )
 
         print("[STEP] Entering prompt into textbox...", flush=True)
-        textbox.first.fill(prompt)
-        custom_random_wait(15, 30)
+        fill_ok, _ = try_with_locator(
+            config, "chatgpt", "chatgpt_textbox", {"page": page},
+            "Fill ChatGPT prompt textbox with answer prompt", lambda obj: obj.first.fill(prompt, timeout=10000), allow_vision=True
+        )
+        if not fill_ok:
+            # try click+type via vision-assisted fallback attempt path
+            try:
+                page.keyboard.insert_text(prompt)
+            except Exception:
+                pass
+        custom_random_wait(config, "absolute")
 
         print("[STEP] Locating and clicking send button...", flush=True)
-        send_button = page.get_by_test_id('send-button').or_(page.get_by_role('button', name='Send'))
-        send_button.click()
-        
-        # Initial wait taaki generation properly start ho sake
-        custom_random_wait(30, 60)
+        send_ok, _ = try_with_locator(
+            config, "chatgpt", "chatgpt_send_button", {"page": page},
+            "Click ChatGPT send button", lambda obj: obj.first.click(timeout=5000), allow_vision=True
+        )
+        if not send_ok:
+            raise RuntimeError("Failed to click send button.")
+        custom_random_wait(config, "random")
 
-        # ============================================
-        # STABLE 15-SECOND POLLING LIVE STREAM CHECK
-        # ============================================
         print("[STEP] Waiting for generated JSON code block to complete writing (15s checks)...", flush=True)
-        code_block_locator = page.locator('#code-block-viewer pre').or_(page.get_by_role('textbox', name='Edit code')).or_(page.get_by_role('code'))
-        
         json_content = None
-        for attempt in range(1, 4):
+        for attempt in range(1, 6):
             print(f"[STEP] Checking code block locator (Attempt {attempt}/5)...", flush=True)
-            
-            if code_block_locator.count() > 0:
-                print("[OK] Code block visible, parsing live text size variations...", flush=True)
-                
+            candidates = get_locator_candidates(config, "chatgpt", "chatgpt_code_block", {"page": page})
+            if candidates:
                 last_length = 0
                 max_check_cycles = 15
-                
                 for cycle in range(max_check_cycles):
                     time.sleep(15)
-                    
-                    current_text = code_block_locator.first.or_(page.locator('#code-block-viewer pre').or_(page.get_by_role('textbox', name='Edit code')).or_(page.get_by_role('code'))).inner_text().strip()
+                    current_text = ""
+                    for _, obj in candidates:
+                        try:
+                            current_text = obj.first.inner_text(timeout=2000).strip()
+                            if current_text:
+                                break
+                        except Exception:
+                            continue
                     current_length = len(current_text)
-                    
                     print(f"[STREAM INFO] Cycle {cycle+1}: Previous Length = {last_length}, Current Length = {current_length}", flush=True)
-                    
                     if current_length > 0 and current_length == last_length:
                         if current_text.endswith("}"):
                             json_content = current_text
@@ -520,77 +387,47 @@ def run():
                             break
                         else:
                             print("[WARNING] Text generation paused but JSON bracket '}' is missing. Waiting further...", flush=True)
-                        
                     last_length = current_length
-                
                 if json_content:
                     break
-            
             if attempt < 5:
-                print(f"[WARNING] Code block completely write nahi hua ya block mila nahi. Next retry window...", flush=True)
-                custom_random_wait(30, 60)
+                print("[WARNING] Code block not fully written or not found. Next retry window...", flush=True)
+                custom_random_wait(config, "random")
             else:
                 print("Max retries reached. Attempting fallback...", flush=True)
-
-                # ============================================
-                # LAST FALLBACK: Strictly target the precise pattern
-                # ============================================
-                print("[FALLBACK] Attempting to locate text with '{\"answer\":' pattern...", flush=True)
-                fallback_element = page.get_by_text(__import__('re').compile(r'\{\s*"answer"\s*:\s*".*?"\}', __import__('re').DOTALL))
-                
-                if fallback_element.count() > 0:
-                    try:
-                        raw_text = fallback_element.first.inner_text().strip()
-                        print(f"[FALLBACK OK] Text found: {raw_text[:100]}...", flush=True)
-                        
-                        # Strictly parsing the raw text directly into JSON without modifications
+                try:
+                    fallback_ok, fallback_obj = try_with_locator(
+                        config, "chatgpt", "chatgpt_answer_fallback_text", {"page": page, "re": re, "__import__": __import__},
+                        "Extract answer JSON fallback text from ChatGPT response", lambda obj: obj.first, allow_vision=False
+                    )
+                    if fallback_ok:
+                        raw_text = fallback_obj.inner_text(timeout=5000).strip()
                         parsed_json = json.loads(raw_text)
-                        generated_answer_text = parsed_json.get("answer", "").strip()
-                        
+                        generated_answer_text = parsed_json.get("answer", "").strip().replace("\n", " ").replace("\r", "")
                         if generated_answer_text:
-                            generated_answer_text = generated_answer_text.replace("\n", " ").replace("\r", "")
-                            
-                            print("[FALLBACK STEP] Updating status.json with fallback answer data...", flush=True)
                             status_data["answer"] = generated_answer_text
                             status_data["answer_generated"] = True
-                            
-                            with status_file.open("w", encoding="utf-8") as f:
-                                json.dump(status_data, f, indent=4, ensure_ascii=False)
-                            print("[FALLBACK OK] status.json successfully updated via fallback!", flush=True)
-                            
+                            write_json(status_path, status_data)
                             state["total_answers"] += 1
                             if include_profile_mention:
                                 state["cta_count"] += 1
                             save_state(state)
-                            
-                            custom_random_wait(15, 30)
+                            custom_random_wait(config, "absolute")
                             try:
                                 browser.close()
-                            except:
+                            except Exception:
                                 pass
                             sys.exit(0)
-                    except Exception as fallback_err:
-                        print(f"[FALLBACK ERROR] Fallback text parsing failed: {fallback_err}", flush=True)
-                else:
-                    print("[FALLBACK INFO] No text matching '{\"answer\":' pattern found on screen.", flush=True)
-                    
-                if 'page' in locals() and page:
-                    try:
-                        screenshot_path = "error_screenshot.png"
-                        # Playwright full page screenshot
-                        page.screenshot(path=screenshot_path, full_page=True)
-                        print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
-                        
-                        upload_to_onlyfiles(screenshot_path)
-                    except Exception as screenshot_err:
-                        print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
+                except Exception as fallback_err:
+                    print(f"[FALLBACK ERROR] Fallback text parsing failed: {fallback_err}", flush=True)
+                if page:
+                    save_error_screenshot(page, config)
                 try:
                     browser.close()
-                except:
+                except Exception:
                     pass
                 sys.exit(1)
 
-        # JSON parsing, validation and Status Sync
         if json_content:
             try:
                 print("[STEP] Parsing content as JSON...", flush=True)
@@ -598,99 +435,64 @@ def run():
                     json_content = json_content.split("```json", 1)[1]
                 if json_content.endswith("```"):
                     json_content = json_content.rsplit("```", 1)[0]
-                
                 parsed_json = json.loads(json_content.strip())
-                generated_answer_text = parsed_json.get("answer", "").strip()
-
-                # Double safety: Remove any stray newlines from string
-                generated_answer_text = generated_answer_text.replace("\n", " ").replace("\r", "")
-                
-                # =====================================
-                # UPDATE STATUS.JSON ONLY (NO TOPICS.TXT INTERACTION)
-                # =====================================
+                generated_answer_text = parsed_json.get("answer", "").strip().replace("\n", " ").replace("\r", "")
                 print("[STEP] Updating status.json with answer data...", flush=True)
                 status_data["answer"] = generated_answer_text
                 status_data["answer_generated"] = True
-                
-                with status_file.open("w", encoding="utf-8") as f:
-                    json.dump(status_data, f, indent=4, ensure_ascii=False)
+                write_json(status_path, status_data)
                 print("[OK] status.json successfully updated (answer appended & answer_generated=True)", flush=True)
-                
                 state["total_answers"] += 1
                 if include_profile_mention:
                     state["cta_count"] += 1
                 save_state(state)
-            except json.JSONDecodeError as je:
-                print(f"[ERROR] Content JSON parse karne me fail hua: {je}. Exiting script...", flush=True)
-                if 'page' in locals() and page:
-                    try:
-                        screenshot_path = "error_screenshot.png"
-                        page.screenshot(path=screenshot_path, full_page=True)
-                        print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
-                        
-                        upload_to_onlyfiles(screenshot_path)
-                    except Exception as screenshot_err:
-                        print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
+            except Exception as je:
+                print(f"[ERROR] Content JSON parsing failed: {je}. Exiting script...", flush=True)
+                if page:
+                    save_error_screenshot(page, config)
                 try:
                     browser.close()
-                except:
+                except Exception:
                     pass
                 sys.exit(1)
         else:
-            print("[ERROR] Save skip kiya gaya kyunki koi data fetch nahi hua. Exiting script...", flush=True)
-            if 'page' in locals() and page:
-                try:
-                    screenshot_path = "error_screenshot.png"
-                    page.screenshot(path=screenshot_path, full_page=True)
-                    print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
-                    
-                    upload_to_onlyfiles(screenshot_path)
-                except Exception as screenshot_err:
-                    print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
+            print("[ERROR] Save skipped because no data was fetched. Exiting script...", flush=True)
+            if page:
+                save_error_screenshot(page, config)
             try:
                 browser.close()
-            except:
+            except Exception:
                 pass
             sys.exit(1)
 
-        # 15 to 30 seconds random wait before closing the browser normally
         print("[STEP] Performing random wait before normal browser closure...", flush=True)
-        custom_random_wait(15, 30)
+        custom_random_wait(config, "absolute")
 
     except SystemExit:
         raise
     except Exception as e:
         print("[ERROR]", e, flush=True)
-        if 'page' in locals() and page:
+        if page:
             try:
-                screenshot_path = "error_screenshot.png"
-                # Playwright full page screenshot
-                page.screenshot(path=screenshot_path, full_page=True)
-                print(f"[OK] Error screenshot captured: {screenshot_path}", flush=True)
-                
-                # --- ImgBB Upload Logic Starts Here ---
-                upload_to_onlyfiles(screenshot_path)
-            except Exception as screenshot_err:
-                print(f"[WARNING] Could not capture or upload screenshot: {screenshot_err}", flush=True)
+                save_error_screenshot(page, config)
+            except Exception:
+                pass
         if browser:
             try:
                 browser.close()
-            except:
+            except Exception:
                 pass
         sys.exit(1)
-
     finally:
         if browser:
             try:
                 browser.close()
-            except:
+            except Exception:
                 pass
-
         try:
             pw_cm.__exit__(None, None, None)
-        except:
+        except Exception:
             pass
-
         print("[DONE] Script finished", flush=True)
 
 

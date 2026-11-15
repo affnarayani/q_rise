@@ -1,7 +1,5 @@
-playwright
-requests
+﻿playwright
+playwright-stealth
 python-dotenv
 cryptography
-playwright-stealth
-seleniumbase 
-turnstile_solver
+requests

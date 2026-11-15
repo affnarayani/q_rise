@@ -1,0 +1,20 @@
+﻿# quora_locators.txt - Quora platform locators (Playwright)
+# Target question text span on topic top questions page
+quora_target_question_text_span = page.locator('xpath=/html[1]/body[1]/div[2]/div[1]/div[2]/div[1]/div[3]/div[1]/div[1]/div[2]/div[4]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/span[1]/span[1]/a[1]/div[1]/div[1]/div[1]/div[1]/span[1]/span[1]')
+
+# Parent link element for the target question text used to extract href
+quora_target_question_parent_link = page.locator('xpath=/html[1]/body[1]/div[2]/div[1]/div[2]/div[1]/div[3]/div[1]/div[1]/div[2]/div[4]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/span[1]/span[1]/a[1]/div[1]/div[1]/div[1]/div[1]/span[1]/span[1]/ancestor::a')
+
+# Answer button on Quora question page
+quora_answer_button = page.locator("xpath=//div[@class='q-text qu-ellipsis qu-whiteSpace--nowrap'][normalize-space()='Answer']")
+
+# Answer editor field inside answer popup
+quora_answer_editor_field = page.locator("xpath=//*[contains(@class, 'doc') and (contains(@class, 'dark_mode') or contains(@class, 'empty'))]")
+
+# Post answer button primary locator
+quora_post_answer_button = page.locator("xpath=//button[descendant::*[text()='Post']] | //div[text()='Post']")
+# Post answer button fallback locator
+quora_post_answer_button = page.locator("xpath=//*[contains(text(), 'Post')]")
+
+# Done button after posting answer
+quora_done_button = page.locator("xpath=//button[descendant::*[text()='Done']] | //div[text()='Done'] | //*[text()='Done']")
